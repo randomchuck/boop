@@ -16,8 +16,8 @@
 
 // Global Variables:
 HINSTANCE hInst;								// current instance
-TCHAR szTitle[] = "Rubberchicken";					// The title bar text
-TCHAR szWindowClass[] = "AnotherRubberChicken";			// the main window class name
+TCHAR szTitle[] = "BOOP 3D";					// The title bar text
+TCHAR szWindowClass[] = "Window Class";			// the main window class name
 HWND hWnd;
 
 // Forward declarations of functions included in this code module:
@@ -219,14 +219,14 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 //   hWnd = CreateWindow(szWindowClass, szTitle, /*WS_OVERLAPPEDWINDOW*/WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX/* | WS_MAXIMIZEBOX*/,
 //      CW_USEDEFAULT, 0, 800, 600,/*CW_USEDEFAULT, 0,*/ NULL, NULL, hInstance, NULL);
-
+int thisisnotimportant = 0;
 hWnd = CreateWindow(szWindowClass,
                     szTitle,
                     /*WS_OVERLAPPEDWINDOW*/WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX/* | WS_MAXIMIZEBOX*/,
                     CW_USEDEFAULT,
                     0,
-                    800,
-                    600,
+                    1280,
+                    1020,
                     /*CW_USEDEFAULT, 0,*/ NULL,
                     NULL,
                     hInstance,

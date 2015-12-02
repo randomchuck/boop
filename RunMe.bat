@@ -1,2 +1,2 @@
-copy bin\Debug\Boop.exe Boop.exe
+copy bin\Release\Boop.exe Boop.exe
 Boop.exe
