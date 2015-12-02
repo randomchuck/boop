@@ -1,0 +1,42 @@
+# depslib dependency file v1.0
+1449074157 source:c:\softe\boop\boop3d.cpp
+	"Boop3D.h"
+	<stdio.h>
+
+1446918574 c:\softe\boop\boop3d.h
+	<windows.h>
+	"GLM_Lite.h"
+	<vector>
+	<string>
+	<math.h>
+
+1446923234 c:\softe\common_11.18.2015\opengl\ogx\source\glm_lite.h
+
+1449072350 source:c:\softe\boop\main.cpp
+	"stdafx.h"
+	"Boop.h"
+	"Boop3D.h"
+	<stdlib.h>
+
+1433361053 c:\softe\boop\stdafx.h
+	"targetver.h"
+	<windows.h>
+	<stdlib.h>
+	<malloc.h>
+	<memory.h>
+	<tchar.h>
+
+1433361053 c:\softe\boop\targetver.h
+
+1433361054 c:\softe\boop\boop.h
+	"resource.h"
+
+1433361053 c:\softe\boop\resource.h
+
+1433361053 source:c:\softe\boop\stdafx.cpp
+	"stdafx.h"
+
+1446923235 source:c:\softe\common_11.18.2015\opengl\ogx\source\glm_lite.cpp
+	"Glm_Lite.h"
+	<math.h>
+
