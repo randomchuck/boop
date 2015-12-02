@@ -6,9 +6,9 @@
 			<Cursor1 position="1728" topLine="53" />
 		</Cursor>
 	</File>
-	<File name="..\Common_11.18.2015\OpenGL\OGX\Source\Glm_Lite.h" open="0" top="0" tabpos="0" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
+	<File name="..\Common_11.18.2015\OpenGL\OGX\Source\Glm_Lite.cpp" open="0" top="0" tabpos="0" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
 		<Cursor>
-			<Cursor1 position="5296" topLine="148" />
+			<Cursor1 position="3425" topLine="75" />
 		</Cursor>
 	</File>
 	<File name="Boop3D.h" open="1" top="0" tabpos="1" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
@@ -16,14 +16,14 @@
 			<Cursor1 position="5101" topLine="158" />
 		</Cursor>
 	</File>
-	<File name="..\Common_11.18.2015\OpenGL\OGX\Source\Glm_Lite.cpp" open="0" top="0" tabpos="0" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
-		<Cursor>
-			<Cursor1 position="3425" topLine="75" />
-		</Cursor>
-	</File>
 	<File name="main.cpp" open="1" top="1" tabpos="3" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
 		<Cursor>
-			<Cursor1 position="6579" topLine="198" />
+			<Cursor1 position="7234" topLine="201" />
+		</Cursor>
+	</File>
+	<File name="..\Common_11.18.2015\OpenGL\OGX\Source\Glm_Lite.h" open="0" top="0" tabpos="0" split="0" active="1" splitpos="0" zoom_1="0" zoom_2="0">
+		<Cursor>
+			<Cursor1 position="5296" topLine="148" />
 		</Cursor>
 	</File>
 </CodeBlocks_layout_file>
