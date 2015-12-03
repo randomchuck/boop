@@ -7,7 +7,7 @@
 
 // Memory leak detection!!!!!
 // Call _CrtDumpMemoryLeaks after main has returned and before program terminates.
-// #define _CRTDBG_MAP_ALLOC
+#define _CRTDBG_MAP_ALLOC
 #include <stdlib.h>
 //#include <crtdbg.h>
 //struct AtExit { ~AtExit() { _CrtDumpMemoryLeaks(); } } doAtExit;
