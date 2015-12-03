@@ -259,7 +259,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	switch (message)
 	{
-		
+		case WM_SIZE: {
+			int param1 = LOWORD(lParam);
+			int param2 = HIWORD(lParam);
+			boop.ResizeView(param1, param2);
+			break;
+		}
 		case WM_COMMAND:
 			wmId    = LOWORD(wParam);
 			wmEvent = HIWORD(wParam);
@@ -275,11 +280,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				default:
 					return DefWindowProc(hWnd, message, wParam, lParam);
 			}
-		y drawing code here...
+			break;
+		case WM_PAINT:
+			hdc = BeginPaint(hWnd, &ps);
+			// TODO: Add any drawing code here...
 			EndPaint(hWnd, &ps);
 			break;
 		case WM_DESTROY:
-		
+			PostQuitMessage(0);
+			break;
+		case WM_CLOSE: // This was needed because the window wasn't closing properly.
+			PostQuitMessage(0);
+			break;
 		default:
 			return DefWindowProc(hWnd, message, wParam, lParam);
 	}
