@@ -1,9 +1,9 @@
 /*
-	TODO: 
+	TODO:
 		PERFORMANCE:
 			* DONE - Add references to functions so we're not copying so much.
 			* Switch to TemplateLinkedList3.5.h instead of vector. Test speed.
-			* Possibly switch to contiguous arrays of simple types instead of 
+			* Possibly switch to contiguous arrays of simple types instead of
 			  B3DVertex.
 			* DONE - Draw to buffer instead of Window's calls to DC.
 			* DONE - Back-face Culling.
@@ -13,13 +13,13 @@
 			* << and >> when you can.
 			* Triple-check Render() method and any methods it calls.
 			* Threads!
-			* Check [] with matrices and vectors. Switch to explicit 
+			* Check [] with matrices and vectors. Switch to explicit
 			vec3.x instead of vec3[0]. Same with mat4.
 			* Cut down on calculations.
 			- Make sure we're not doing calculations more than once.
 			* DONE - NO DIFFERENCE - Use own FillRect algorithm. Check performance.
 			* Common matrix calculations could be stored. Rotations, for example.
-			* DONE - When indexing buffers, don't calculate the index every time. 
+			* DONE - When indexing buffers, don't calculate the index every time.
 			buff[y * w + x] = 2; Pull it out!
 			int row = y * w;
 			buff[row + x] = 2;
@@ -27,8 +27,11 @@
 			* Speed up texturing.
 			* Speed up flat shading.
 			* Speed up gouraud shading.
-			* DONE - If a high poly(6000+) mesh is very close to the camera, 
+			* DONE - If a high poly(6000+) mesh is very close to the camera,
 			the scane line algorithm takes forever to draw. Fix.
+			* Implement a quad-tree object hierarchy. Can use with culling
+			code. Would reduce a million checks against the frustum to just
+			a few.
 		STYLE:
 			* Lower-case-ify local variables.
 			* Underscore approriate function parameters.
@@ -57,9 +60,9 @@
 		OTHER:
 			* Remove commented code unless it's pertinent.
 	============================================================================
-	EXPORTING MESHES: 
+	EXPORTING MESHES:
 		* Boop uses meshes in .obj format. You can export these from programs like Blender.
-		* Currently, Boop can only handle single object meshes. No grouping/parent,child 
+		* Currently, Boop can only handle single object meshes. No grouping/parent,child
 		hierarchies.
 		* Before exporting:
 		- Ctrl + J - Join(Multiple Objects become one)
@@ -69,7 +72,7 @@
 		- Create a new view, switch it to UV Editor.
 		-- Make sure there are UVS.
 		- May have to scale things(-1 on x or z)
-		- Only things selected when exporting to .obj should be: Write Normals, 
+		- Only things selected when exporting to .obj should be: Write Normals,
 		Include UVs, Triangulate Faces, and Keep Vertex Order.
 	============================================================================
 	CODE USAGE:
@@ -108,7 +111,7 @@
 ///////////
 // #DEFINES
 
-	// Shading/drawing modes: Wireframe, No Shading, Flat Shading, 
+	// Shading/drawing modes: Wireframe, No Shading, Flat Shading,
 	// Smooth/Gouraud Shading.
 	// Set SHADING to one of these defines.
 	#define SHADING_WIRE	0
@@ -116,7 +119,7 @@
 	#define SHADING_FLAT	2
 	#define SHADING_GOURAUD 3
 	static int SHADING = SHADING_GOURAUD;
-	// Set TEXTURING to one of these. Not used in 
+	// Set TEXTURING to one of these. Not used in
 	// SHADING_WIRE mode.
 	#define TEXTURES_OFF 0
 	#define TEXTURES_ON  1
@@ -154,7 +157,7 @@ struct B3DTriangle {
 	B3DVertex verts[3];
 };
 // 3D objects that are displayed. Can have a variable number of triangles.
-// Features are transform(position/orientation), dimensions of mesh, 
+// Features are transform(position/orientation), dimensions of mesh,
 // texture(no multitexturing yet), and texture dimensions.
 struct B3DMesh {
 	vector<B3DTriangle> tris;
@@ -175,7 +178,7 @@ class Boop3D
 		HDC hdcMem;
 		HBITMAP hbmMem;
 		HANDLE hOld;
-		// DIB - Direct access to bitmap/buffer. We draw to this then 
+		// DIB - Direct access to bitmap/buffer. We draw to this then
 		// blit to screen.
 		unsigned char *bmbuffer;
 		// Colors for mesh and wireframe.
@@ -210,7 +213,7 @@ class Boop3D
 		vec3 ambilite;
 		// Current mesh being rendered.
 		B3DMesh *curMesh;
-		
+
 	public:
 		////////////////////////////////////////////////////////////
 		// Constructor.
@@ -221,120 +224,120 @@ class Boop3D
 		////////////////////////////////////////////////////////////
 		// Destructor.
 		~Boop3D(void);
-		
+
 		////////////////////////////////////////////////////////////
-		// The BIG initializer function. Needs to be called at least 
-		// once before calling anything else. Called for you if 
+		// The BIG initializer function. Needs to be called at least
+		// once before calling anything else. Called for you if
 		// creating a Boop3D object with Boop3D(HWND);
-		// 
-		// Creates contexts, sets up memory and lists, 
+		//
+		// Creates contexts, sets up memory and lists,
 		// inits matrices, buffers, everything.
 		void Initialize(HWND _winHandle);
-		
+
 		////////////////////////////////////////////////////////////
 		// Cleans up memory, deletes handles, buffers, etc.
-		// Shouldn't need to call explicitly, as it's invoked from 
+		// Shouldn't need to call explicitly, as it's invoked from
 		// our destructor. Just let Boop go out of scope.
 		void Shutdown(void);
-		
+
 		////////////////////////////////////////////////////////////
-		// Called automatically in Render(). Clears our backbuffer 
+		// Called automatically in Render(). Clears our backbuffer
 		// and the zbuffer.
 		void Clear();
-		
+
 		////////////////////////////////////////////////////////////
-		// This is put into your window procedure for the message: 
+		// This is put into your window procedure for the message:
 		// WM_SIZE.
-		// 
-		// TODO: Currently, it's not really needed because Boop cannot 
-		// handle resizing. Will be added later. Upon calling this, 
+		//
+		// TODO: Currently, it's not really needed because Boop cannot
+		// handle resizing. Will be added later. Upon calling this,
 		// Boop3D should resize color and depth/z buffers.
 		void ResizeView(int w, int h);
-		
+
 		////////////////////////////////////////////////////////////
-		// OBJ Loader. Pass a file path and texture path. Refer 
+		// OBJ Loader. Pass a file path and texture path. Refer
 		// to EXPORTING MESHES for object file info.
 		// Textures are also 32bit .bmp's.
 		void LoadMesh(string filepath, string texturepath);
-		
+
 		////////////////////////////////////////////////////////////
 		// Retrieves mesh at index idx.
 		B3DMesh *GetMesh(int idx);
 
 		////////////////////////////////////////////////////////////
-		// Takes a point and a matrix and "projects" it into the 
+		// Takes a point and a matrix and "projects" it into the
 		// screen.
 		vec3 Project( vec3 point, mat4 mvpmatrix );
-		
+
 		////////////////////////////////////////////////////////////
 		// Called in a loop. Traverses mesh list and draws them all.
 		void Render(void);
-		
+
 		////////////////////////////////////////////////////////////
 		// Accepts a single mesh and renders its triangles to screen.
 		void DrawMesh(B3DMesh &m);
-		
+
 		////////////////////////////////////////////////////////////
-		// Draws a single triangle. Performs back-face culling and 
+		// Draws a single triangle. Performs back-face culling and
 		// flat shading.
 		void DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, COLORREF _tricolor);
-		
+
 		////////////////////////////////////////////////////////////
 		// Draws pixels on a scanline using info passed.
 		// B3DScanLineInfo contains y screen coordinate, light, texture info.
 		// B3DVertex * 4 are the TWO DEE coordinates for the vertices.
 		// _lineclr is the color of the parent triangle.
-		void DrawTriScanLine( B3DScanLineInfo &b3dsli, 
-							  const B3DVertex &vstart1, 
-							  const B3DVertex &vend1, 
-							  const B3DVertex &vstart2, 
-							  const B3DVertex &vend2, 
+		void DrawTriScanLine( B3DScanLineInfo &b3dsli,
+							  const B3DVertex &vstart1,
+							  const B3DVertex &vend1,
+							  const B3DVertex &vstart2,
+							  const B3DVertex &vend2,
 							  COLORREF _lineclr
 							);
-		
+
 		////////////////////////////////////////////////////////////
 		// Ensures value doesn't go above or below max/min.
 		float Clamp(float value, float min = 0, float max = 1);
-		
+
 		////////////////////////////////////////////////////////////
-		// Returns value that is the gradient/percentage between 
+		// Returns value that is the gradient/percentage between
 		// max and min. For example: 25 - 15, x 0.5, + 15 = 20.
 		// The value 20 is the halfway value between 25 and 15.
 		float Interpolate(float min, float max, float gradient);
-		
+
 		////////////////////////////////////////////////////////////
-		// Takes a triangle and matrix. Draws 3 lines between vertices 
+		// Takes a triangle and matrix. Draws 3 lines between vertices
 		// instead of a filled triangle.
 		void DrawWireFrameTri(B3DTriangle tri, mat4 wiretrimat);
-		
+
 		////////////////////////////////////////////////////////////
 		// Checks point against screen boundaries.
 		bool IsPointInView(vec3 _point);
-		
+
 		////////////////////////////////////////////////////////////
-		// Pass in one of the shading #defines at the top of this 
+		// Pass in one of the shading #defines at the top of this
 		// file. SHADING_WIRE, SHADING_NONE, SHADING_FLAT, SHADING_GOURAUD.
 		void SetShading(int shadetype);
-		
+
 		////////////////////////////////////////////////////////////
-		// Pass in one of the texturing #defines at the top of this 
+		// Pass in one of the texturing #defines at the top of this
 		// file. TEXTURES_OFF, TEXTURES_ON
 		void SetTextures(int setting);
-		
+
 		////////////////////////////////////////////////////////////
 		// Load 32bit .bmp.
 		// szPath - Path to .bmp file.
 		// ppBuffer - Pointer to pointer. Function creates buffer and points pointer to it.
 		// pWidth/pHeight/pDepth - If not zero, will set variable to dimension wanted.
-		void LoadBmp(const char *szPath, 
-					 unsigned char **ppBuffer, 
-					 int *pWidth/* = 0*/, 
-					 int *pHeight/* = 0*/, 
+		void LoadBmp(const char *szPath,
+					 unsigned char **ppBuffer,
+					 int *pWidth/* = 0*/,
+					 int *pHeight/* = 0*/,
 					 int *pDepth/* = 0*/);
-					 
+
 		//////////////////
 		// Camera Controls
-		
+
 			////////////////////////////////////////////////////////////////////
 			// Set camera matrix to a look-at matrix.
 			// eye - position, center - where it's looking, up - up vector(0,1,0)
@@ -348,7 +351,7 @@ class Boop3D
 			// Additive, which means it uses the vector to move in a direction.
 			// Doesn't explicitly set camera position.
 			void CameraStrafeToA(vec3 dir);
-		
+
 		// Camera Controls
 		//////////////////
 };
