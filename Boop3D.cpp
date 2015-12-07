@@ -466,8 +466,6 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 	///////////////////
 	// Camera Cull Test
 
-		// Should look into view frustum culling.
-
 		// TODO: Fix this. Not able to handle camera on -z.
 		// UPDATE - 11.07.2015: Figured out distance to cam on
 		// pos z. Neg z distance might be wrong. Still need to
@@ -506,7 +504,24 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 			return;
 
 		// TODO: Add other frustum sides.
+		// Far frustum plane.
+		{
+			// Create vectors from far camera plane to vertices.
+			vec3 farCamPos = vec3( viewmat[3].x + viewmat[2].x * 2.0f, viewmat[3].y + viewmat[2].y * 2.0f, viewmat[3].z  + viewmat[2].z * 2.0f );
+			vec3 v1vec = vec3( v1mtx[3].x - farCamPos.x, v1mtx[3].y - farCamPos.y, v1mtx[3].z - farCamPos.z );
+			vec3 v2vec = vec3( v2mtx[3].x - farCamPos.x, v2mtx[3].y - farCamPos.y, v2mtx[3].z - farCamPos.z );
+			vec3 v3vec = vec3( v3mtx[3].x - farCamPos.x, v3mtx[3].y - farCamPos.y, v3mtx[3].z - farCamPos.z );
+			
+			// Dot with negated camera at vector. This is our far plane normal.
+			float dotv1z = dot( v1vec, viewmat[2] * -1.0f );
+			float dotv2z = dot( v2vec, viewmat[2] * -1.0f );
+			float dotv3z = dot( v3vec, viewmat[2] * -1.0f );
 
+			// Discard triangle if past far camera plane.
+			if( dotv1z < 0 || dotv2z < 0 || dotv3z < 0 )
+				return;
+
+		}
 		/*float dist1 = sqrt( dot(viewmat[3], v1mtx[3]) );
 		float dist2 = sqrt( dot(viewmat[3], v2mtx[3]) );
 		float dist3 = sqrt( dot(viewmat[3], v3mtx[3]) );*/
