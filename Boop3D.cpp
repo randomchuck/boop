@@ -1341,3 +1341,9 @@ void Boop3D::LoadBmp(const char *szPath,
 HDC Boop3D::GetDCtxt( void ) {
 	return deviceContext;
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// Get double buffer mem context.
+HDC Boop3D::GetBackbuffer( void ) {
+	return hdcMem;
+}
