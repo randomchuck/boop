@@ -354,6 +354,11 @@ class Boop3D
 
 		// Camera Controls
 		//////////////////
+
+		/////////////////////////////////////////////////////////////////////////////
+		// Returns the Device Context Boop3D is using to draw.
+		HDC GetDCtxt( void );
+		
 };
 
 #endif // BOOP_3D

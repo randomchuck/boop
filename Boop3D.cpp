@@ -1335,3 +1335,9 @@ void Boop3D::LoadBmp(const char *szPath,
 
 // Camera Controls
 //////////////////
+
+///////////////////////////////////////////////////////////////////////////////
+// Returns the Device Context Boop3D is using to draw.
+HDC Boop3D::GetDCtxt( void ) {
+	return deviceContext;
+}
