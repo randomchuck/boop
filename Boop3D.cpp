@@ -397,7 +397,7 @@ void Boop3D::Render(void) {
 //		meshlist[midx].matrix = mat4( meshlist[midx].matrix[3] ) *
 //								rotamtx *
 //								scalemtx;
-		meshlist[midx].matrix *= rotamtx;
+		// meshlist[midx].matrix *= rotamtx;
 		// Point to current mesh.
 		curMesh = &meshlist[midx];
 		// Finally draw it.
@@ -507,7 +507,8 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 		// Far frustum plane.
 		{
 			// Create vectors from far camera plane to vertices.
-			vec3 farCamPos = vec3( viewmat[3].x + viewmat[2].x * 10.0f, viewmat[3].y + viewmat[2].y * 10.0f, viewmat[3].z  + viewmat[2].z * 10.0f );
+			float fardist = 100.0f;
+			vec3 farCamPos = vec3( viewmat[3].x + viewmat[2].x * 100.0f, viewmat[3].y + viewmat[2].y * 100.0f, viewmat[3].z  + viewmat[2].z * 100.0f );
 			vec3 v1vec = vec3( v1mtx[3].x - farCamPos.x, v1mtx[3].y - farCamPos.y, v1mtx[3].z - farCamPos.z );
 			vec3 v2vec = vec3( v2mtx[3].x - farCamPos.x, v2mtx[3].y - farCamPos.y, v2mtx[3].z - farCamPos.z );
 			vec3 v3vec = vec3( v3mtx[3].x - farCamPos.x, v3mtx[3].y - farCamPos.y, v3mtx[3].z - farCamPos.z );

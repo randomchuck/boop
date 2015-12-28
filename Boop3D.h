@@ -170,7 +170,7 @@ struct B3DMesh {
 // 3D Win32 Software Renderer
 class Boop3D
 {
-	private:
+	public:
 		// The window we draw to.
 		HWND windowHandle;
 		// Device and memory contexts for drawing.
