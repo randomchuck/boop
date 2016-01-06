@@ -436,10 +436,12 @@ void Boop3D::Render(void) {
 
 ////////////////////////////////////////////////////////////
 // Accepts a single mesh and renders its triangles to screen.
-void Boop3D::DrawMesh(B3DMesh &m) {
+void Boop3D::DrawMesh( B3DMesh &m, mat4 *trans/* = 0*/ ) {
 
 	// Calc mvp matrix.
-	mat4 mtx = projmat * viewmat * m.matrix;
+	mat4 mtx;
+	mtx = (trans) ? (projmat * viewmat * *trans) : (projmat * viewmat * m.matrix);
+
 
 	// Draw every triangle.
 	for(unsigned int tidx = 0; tidx < m.tris.size(); tidx++) {
@@ -452,6 +454,15 @@ void Boop3D::DrawMesh(B3DMesh &m) {
 	} // for each(B3DTriangle...
 
 } // DrawMesh()
+
+////////////////////////////////////////////////////////////
+// If using the one-shot DrawMesh() or you've been drawing 
+// directly to our backbuffer, call this to render every-
+// thing.
+void Boop3D::Blit( void ) {
+	// Transfer the off-screen DC to the screen.
+	BitBlt(deviceContext, 0, 0, clirect.right, clirect.bottom, hdcMem, 0, 0, SRCCOPY);
+}
 
 ////////////////////////////////////////////////////////////
 // Draws a single triangle. Performs back-face culling and

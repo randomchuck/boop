@@ -275,7 +275,15 @@ class Boop3D
 
 		////////////////////////////////////////////////////////////
 		// Accepts a single mesh and renders its triangles to screen.
-		void DrawMesh(B3DMesh &m);
+		// [Optional] Will also accept a pointer to another transform to use 
+		// instead of the one the mesh is using.
+		void DrawMesh( B3DMesh &m, mat4 *trans = 0 );
+
+		////////////////////////////////////////////////////////////
+		// If using the one-shot DrawMesh() or you've been drawing 
+		// directly to our backbuffer, call this to render every-
+		// thing.
+		void Blit( void );
 
 		////////////////////////////////////////////////////////////
 		// Draws a single triangle. Performs back-face culling and
