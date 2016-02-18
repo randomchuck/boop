@@ -59,12 +59,13 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	// boop.LoadMesh("box_v_uv_n.obj", "roadtile_1024x1024.bmp");
 //	boop.LoadMesh("stylus.obj", "roadtile_1024x1024.bmp");
 
-	boop.LoadMesh("bman.obj", "yellow.bmp");
-	boop.LoadMesh("bman.obj", "roadtile_1024x1024.bmp");
-	boop.LoadMesh("bman.obj", "red.bmp");
+	boop.LoadMesh("box_v_uv_n.obj", "roadtile.bmp");
+	// boop.LoadMesh("bman.obj", "yellow.bmp");
+	//boop.LoadMesh("bman.obj", "roadtile_1024x1024.bmp");
+	//boop.LoadMesh("bman.obj", "red.bmp");
 
-	boop.GetMesh(0)->matrix.columns[3].x = 1.0f;
-	boop.GetMesh(2)->matrix.columns[3].x = -1.0f;
+	//boop.GetMesh(0)->matrix.columns[3].x = 1.0f;
+	//boop.GetMesh(2)->matrix.columns[3].x = -1.0f;
 //	boop.GetMesh(0)->matrix.columns[3].y = 1.5f;
 //	boop.GetMesh(1)->matrix.columns[3].y = 1.5f;
 

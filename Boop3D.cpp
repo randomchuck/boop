@@ -450,13 +450,12 @@ void Boop3D::DrawMesh( B3DMesh &m, mat4 *trans/* = 0*/ ) {
 			DrawWireFrameTri( m.tris[tidx], mtx );
 		else
 			DrawFilledTri( m.tris[tidx], mtx, m.matrix, RGB(255, 255, 255) ); // Shaded... or not.
-
 	} // for each(B3DTriangle...
 
 } // DrawMesh()
 
 ////////////////////////////////////////////////////////////
-// If using the one-shot DrawMesh() or you've been drawing 
+// If using the one-shot DrawMesh() or you've been drawing
 // directly to our backbuffer, call this to render every-
 // thing.
 void Boop3D::Blit( void ) {
@@ -523,7 +522,7 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 			vec3 v1vec = vec3( v1mtx[3].x - farCamPos.x, v1mtx[3].y - farCamPos.y, v1mtx[3].z - farCamPos.z );
 			vec3 v2vec = vec3( v2mtx[3].x - farCamPos.x, v2mtx[3].y - farCamPos.y, v2mtx[3].z - farCamPos.z );
 			vec3 v3vec = vec3( v3mtx[3].x - farCamPos.x, v3mtx[3].y - farCamPos.y, v3mtx[3].z - farCamPos.z );
-			
+
 			// Dot with negated camera at vector. This is our far plane normal.
 			float dotv1z = dot( v1vec, viewmat[2] * -1.0f );
 			float dotv2z = dot( v2vec, viewmat[2] * -1.0f );
@@ -860,6 +859,21 @@ void Boop3D::DrawTriScanLine( B3DScanLineInfo &b3dsli,
 		eu = Interpolate(b3dsli.uc, b3dsli.ud, gradient2);
 		sv = Interpolate(b3dsli.va, b3dsli.vb, gradient1);
 		ev = Interpolate(b3dsli.vc, b3dsli.vd, gradient2);
+	}
+
+	// Fix issue with sx being bigger than ex on certain triangles.
+	// Causes triangle to not be drawn at all!
+	// Probably because I'm not handling flat-top triangles. Oh well.
+	if( sx > ex) {
+		float tx = sx;
+		sx = ex;
+		ex = tx;
+		tx = su;
+		su = eu;
+		eu = tx;
+		tx = sv;
+		sv = ev;
+		ev = tx;
 	}
 
 	// Draw the line.

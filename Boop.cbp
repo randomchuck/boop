@@ -13,7 +13,7 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-g" />
-					<Add directory="C:/SoftE/Common_11.18.2015/OpenGL/OGX/Source" />
+					<Add directory="C:/SoftE/Common_12.18.2015/OpenGL/OGX/Source" />
 				</Compiler>
 				<Linker>
 					<Add option="-mwindows" />
@@ -26,7 +26,7 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-O2" />
-					<Add directory="C:/SoftE/Common_11.18.2015/OpenGL/OGX/Source" />
+					<Add directory="C:/SoftE/Common_12.18.2015/OpenGL/OGX/Source" />
 				</Compiler>
 				<Linker>
 					<Add option="-s" />
@@ -37,8 +37,8 @@
 		<Compiler>
 			<Add option="-Wall" />
 		</Compiler>
-		<Unit filename="../Common_11.18.2015/OpenGL/OGX/Source/Glm_Lite.cpp" />
-		<Unit filename="../Common_11.18.2015/OpenGL/OGX/Source/Glm_Lite.h" />
+		<Unit filename="../Common_12.18.2015/OpenGL/OGX/Source/Glm_Lite.cpp" />
+		<Unit filename="../Common_12.18.2015/OpenGL/OGX/Source/Glm_Lite.h" />
 		<Unit filename="Boop.h" />
 		<Unit filename="Boop3D.cpp" />
 		<Unit filename="Boop3D.h" />
