@@ -1,5 +1,27 @@
 #include "Boop3D.h"
 #include <stdio.h>
+#include "winconsole.h"
+
+CRITICAL_SECTION cs;
+
+//void CALLBACK DrawLineCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
+//	long value = InterlockedIncrement( &(((Boop3D *)context)->threadidx) );
+//	Boop3D *bp = (Boop3D *)context;
+//	// long value = -1;
+////	EnterCriticalSection(&cs);
+////		value = ++(bp->threadidx);
+////	LeaveCriticalSection(&cs);
+//	// printf("%s\n", ((Boop3D *)context)->fpsstr );
+//	// printf("%ld, %ld\n", hival, value );
+//	printf("%ld\n", value );
+//	bp->DrawTriScanLine(   bp->sli[value - 1],
+//						 *(bp->sli[value - 1].v2[0]),
+//						 *(bp->sli[value - 1].v2[1]),
+//						 *(bp->sli[value - 1].v2[2]),
+//						 *(bp->sli[value - 1].v2[3]),
+//						   bp->sli[value - 1].sclr );
+//	InterlockedIncrement( &bp->dethread );
+//}
 
 ////////////////////////////////////////////////////////////
 // Constructor.
@@ -19,7 +41,7 @@ Boop3D::~Boop3D(void) { Shutdown(); }
 // Creates contexts, sets up memory and lists,
 // inits matrices, buffers, everything.
 void Boop3D::Initialize(HWND _winHandle) {
-
+	InitializeCriticalSection(&cs);
 	// Hold onto our client window handle.
 	windowHandle = _winHandle;
 	// DC to client area.
@@ -92,6 +114,14 @@ void Boop3D::Initialize(HWND _winHandle) {
 	// Clear screen and zbuffer.
 	Clear();
 
+	// Set up console window.
+	wincon = initCon();
+	mapCon(wincon);
+
+	// Start the thread index at the beginning.
+	threadidx = 0;
+	dethread = 0;
+
 } // Initialize()
 
 ////////////////////////////////////////////////////////////
@@ -99,6 +129,9 @@ void Boop3D::Initialize(HWND _winHandle) {
 // Shouldn't need to call explicitly, as it's invoked from
 // our destructor. Just let Boop go out of scope.
 void Boop3D::Shutdown(void) {
+	DeleteCriticalSection(&cs);
+	// Shut down console window.
+	cleanCon();
 	// Not Init()'d so nothing to do.
 	if(windowHandle == 0)
 		return;
@@ -665,8 +698,10 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 	else
 		v1v3slope = 0;
 
-	// Point to transform for mesh.
-	sli.m = &filledtrimat;
+	int cursli = 0;
+	// Start the thread index at the beginning.
+	threadidx = 0;
+	dethread = 0;
 
 	// Draw top then bottom of triangle.
 	for( int yidx = (int)v1.xyz.y; yidx <= (int)v3.xyz.y; yidx++ ) {
@@ -675,101 +710,161 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 		// disappearing.
 		if(yidx < -100 || yidx >= clirect.bottom)
 			break;
-		sli.y = yidx;
+
+		// We only have so many threads.
+		if( false/*cursli >= NUM_THREADS*/ ) {
+			cursli = 0;
+			// CreateThread(0, 0, DrawLineThread, this, 0, NULL);
+			// static DWORD WINAPI DrawLineThread(void *param) { return 0; }
+
+			for( int i = 0; i < NUM_THREADS; i++ ) {
+				ts[i].bp = this;
+				ts[i].sli = &sli[i];
+				// TrySubmitThreadpoolCallback(DrawLineCallback, this/*(void *)&ts[i]*/, 0);
+			}
+			while( dethread < NUM_THREADS ) {}
+
+			// Start the thread index at the beginning.
+			threadidx = 0;
+			dethread = 0;
+		}
+		cursli = 0;
+		sli[cursli].y = yidx;
 		if( v1v2slope > v1v3slope ) {
 			if( yidx < v2.xyz.y ) {
 				// Shading values.
-				sli.dota = dotn1;
-				sli.dotb = dotn3;
-				sli.dotc = dotn1;
-				sli.dotd = dotn2;
+				sli[cursli].dota = dotn1;
+				sli[cursli].dotb = dotn3;
+				sli[cursli].dotc = dotn1;
+				sli[cursli].dotd = dotn2;
 				// Texture coordinate values.
-				sli.ua = v1.uv.x;
-				sli.ub = v3.uv.x;
-				sli.uc = v1.uv.x;
-				sli.ud = v2.uv.x;
-				sli.va = v1.uv.y;
-				sli.vb = v3.uv.y;
-				sli.vc = v1.uv.y;
-				sli.vd = v2.uv.y;
+				sli[cursli].ua = v1.uv.x;
+				sli[cursli].ub = v3.uv.x;
+				sli[cursli].uc = v1.uv.x;
+				sli[cursli].ud = v2.uv.x;
+				sli[cursli].va = v1.uv.y;
+				sli[cursli].vb = v3.uv.y;
+				sli[cursli].vc = v1.uv.y;
+				sli[cursli].vd = v2.uv.y;
 				// Vertices.
-				sli.v[0] = &tri.verts[0];
-				sli.v[1] = &tri.verts[2];
-				sli.v[2] = &tri.verts[0];
-				sli.v[3] = &tri.verts[1];
+				sli[cursli].v[0] = &tri.verts[0];
+				sli[cursli].v[1] = &tri.verts[2];
+				sli[cursli].v[2] = &tri.verts[0];
+				sli[cursli].v[3] = &tri.verts[1];
 				//
-				DrawTriScanLine(sli, v1, v3, v1, v2, _tricolor); // Top.
+				sli[cursli].v2[0] = &v1;
+				sli[cursli].v2[1] = &v3;
+				sli[cursli].v2[2] = &v1;
+				sli[cursli].v2[3] = &v2;
+				//
+				// Point to transform for mesh.
+				sli[cursli].m = &filledtrimat;
+				//
+				sli[cursli].sclr = _tricolor;
+				//
+				DrawTriScanLine(sli[cursli], v1, v3, v1, v2, _tricolor); // Top.
+				cursli++;
 			}
 			else {
 				// Shading values.
-				sli.dota = dotn1;
-				sli.dotb = dotn3;
-				sli.dotc = dotn2;
-				sli.dotd = dotn3;
+				sli[cursli].dota = dotn1;
+				sli[cursli].dotb = dotn3;
+				sli[cursli].dotc = dotn2;
+				sli[cursli].dotd = dotn3;
 				// Texture coordinate values.
-				sli.ua = v1.uv.x;
-				sli.ub = v3.uv.x;
-				sli.uc = v2.uv.x;
-				sli.ud = v3.uv.x;
-				sli.va = v1.uv.y;
-				sli.vb = v3.uv.y;
-				sli.vc = v2.uv.y;
-				sli.vd = v3.uv.y;
+				sli[cursli].ua = v1.uv.x;
+				sli[cursli].ub = v3.uv.x;
+				sli[cursli].uc = v2.uv.x;
+				sli[cursli].ud = v3.uv.x;
+				sli[cursli].va = v1.uv.y;
+				sli[cursli].vb = v3.uv.y;
+				sli[cursli].vc = v2.uv.y;
+				sli[cursli].vd = v3.uv.y;
 				// Vertices.
-				sli.v[0] = &tri.verts[0];
-				sli.v[1] = &tri.verts[2];
-				sli.v[2] = &tri.verts[1];
-				sli.v[3] = &tri.verts[2];
+				sli[cursli].v[0] = &tri.verts[0];
+				sli[cursli].v[1] = &tri.verts[2];
+				sli[cursli].v[2] = &tri.verts[1];
+				sli[cursli].v[3] = &tri.verts[2];
 				//
-				DrawTriScanLine(sli, v1, v3, v2, v3, _tricolor); // Bottom.
+				sli[cursli].v2[0] = &v1;
+				sli[cursli].v2[1] = &v3;
+				sli[cursli].v2[2] = &v2;
+				sli[cursli].v2[3] = &v3;
+				// Point to transform for mesh.
+				sli[cursli].m = &filledtrimat;
+				//
+				sli[cursli].sclr = _tricolor;
+				//
+				DrawTriScanLine(sli[cursli], v1, v3, v2, v3, _tricolor); // Bottom.
+				cursli++;
 			}
 		} // if( v1v2slope...
 		else {
 			if( yidx < v2.xyz.y ) {
 				// Shading values.
-				sli.dota = dotn1;
-				sli.dotb = dotn2;
-				sli.dotc = dotn1;
-				sli.dotd = dotn3;
+				sli[cursli].dota = dotn1;
+				sli[cursli].dotb = dotn2;
+				sli[cursli].dotc = dotn1;
+				sli[cursli].dotd = dotn3;
 				// Texture coordinate values.
-				sli.ua = v1.uv.x;
-				sli.ub = v2.uv.x;
-				sli.uc = v1.uv.x;
-				sli.ud = v3.uv.x;
-				sli.va = v1.uv.y;
-				sli.vb = v2.uv.y;
-				sli.vc = v1.uv.y;
-				sli.vd = v3.uv.y;
+				sli[cursli].ua = v1.uv.x;
+				sli[cursli].ub = v2.uv.x;
+				sli[cursli].uc = v1.uv.x;
+				sli[cursli].ud = v3.uv.x;
+				sli[cursli].va = v1.uv.y;
+				sli[cursli].vb = v2.uv.y;
+				sli[cursli].vc = v1.uv.y;
+				sli[cursli].vd = v3.uv.y;
 				// Vertices.
-				sli.v[0] = &tri.verts[0];
-				sli.v[1] = &tri.verts[1];
-				sli.v[2] = &tri.verts[0];
-				sli.v[3] = &tri.verts[2];
+				sli[cursli].v[0] = &tri.verts[0];
+				sli[cursli].v[1] = &tri.verts[1];
+				sli[cursli].v[2] = &tri.verts[0];
+				sli[cursli].v[3] = &tri.verts[2];
 				//
-				DrawTriScanLine(sli, v1, v2, v1, v3, _tricolor); // Top.
+				sli[cursli].v2[0] = &v1;
+				sli[cursli].v2[1] = &v2;
+				sli[cursli].v2[2] = &v1;
+				sli[cursli].v2[3] = &v3;
+				// Point to transform for mesh.
+				sli[cursli].m = &filledtrimat;
+				//
+				sli[cursli].sclr = _tricolor;
+				//
+				DrawTriScanLine(sli[cursli], v1, v2, v1, v3, _tricolor); // Top.
+				cursli++;
 			}
 			else {
 				// Shading values.
-				sli.dota = dotn2;
-				sli.dotb = dotn3;
-				sli.dotc = dotn1;
-				sli.dotd = dotn3;
+				sli[cursli].dota = dotn2;
+				sli[cursli].dotb = dotn3;
+				sli[cursli].dotc = dotn1;
+				sli[cursli].dotd = dotn3;
 				// Texture coordinate values.
-				sli.ua = v2.uv.x;
-				sli.ub = v3.uv.x;
-				sli.uc = v1.uv.x;
-				sli.ud = v3.uv.x;
-				sli.va = v2.uv.y;
-				sli.vb = v3.uv.y;
-				sli.vc = v1.uv.y;
-				sli.vd = v3.uv.y;
+				sli[cursli].ua = v2.uv.x;
+				sli[cursli].ub = v3.uv.x;
+				sli[cursli].uc = v1.uv.x;
+				sli[cursli].ud = v3.uv.x;
+				sli[cursli].va = v2.uv.y;
+				sli[cursli].vb = v3.uv.y;
+				sli[cursli].vc = v1.uv.y;
+				sli[cursli].vd = v3.uv.y;
 				// Vertices.
-				sli.v[0] = &tri.verts[1];
-				sli.v[1] = &tri.verts[2];
-				sli.v[2] = &tri.verts[0];
-				sli.v[3] = &tri.verts[2];
+				sli[cursli].v[0] = &tri.verts[1];
+				sli[cursli].v[1] = &tri.verts[2];
+				sli[cursli].v[2] = &tri.verts[0];
+				sli[cursli].v[3] = &tri.verts[2];
 				//
-				DrawTriScanLine(sli, v2, v3, v1, v3, _tricolor); // Bottom.
+				sli[cursli].v2[0] = &v2;
+				sli[cursli].v2[1] = &v3;
+				sli[cursli].v2[2] = &v1;
+				sli[cursli].v2[3] = &v3;
+				// Point to transform for mesh.
+				sli[cursli].m = &filledtrimat;
+				//
+				sli[cursli].sclr = _tricolor;
+				//
+				DrawTriScanLine(sli[cursli], v2, v3, v1, v3, _tricolor); // Bottom.
+				cursli++;
 			}
 		}
 	} // for(int yidx...

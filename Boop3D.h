@@ -143,6 +143,8 @@ struct B3DScanLineInfo {
 	float va, vb, vc, vd;
 	B3DVertex *v[4];
 	mat4 *m;
+	B3DVertex *v2[4];
+	COLORREF sclr;
 };
 
 // Vertices have position, normals, texture coordinates, and color.
@@ -167,10 +169,27 @@ struct B3DMesh {
 	int txwidth, txheight, txdepth;
 };
 
+// For-dec so ThreadStruct knows what's going on.
+class Boop3D;
+
+// Multithreading Struct. Pass a unique one to the scan line
+// drawing thread func.
+#define NUM_THREADS (10)
+struct ThreadStruct {
+	B3DScanLineInfo *sli;
+	Boop3D *bp;
+};
+
 // 3D Win32 Software Renderer
 class Boop3D
 {
 	public:
+		// Allows each thread unique data to work with.
+		long threadidx;
+		long dethread;
+		ThreadStruct ts[NUM_THREADS];
+		// Console window.
+		HANDLE wincon;
 		// The window we draw to.
 		HWND windowHandle;
 		// Device and memory contexts for drawing.
@@ -204,7 +223,7 @@ class Boop3D
 		// Dimensions of our client area that we draw to.
 		RECT clirect;
 		// Current scan line.
-		B3DScanLineInfo sli;
+		B3DScanLineInfo sli[NUM_THREADS];
 		// Light Info: Color, transform, ambient light.
 		// Transform can change the direction of the light.
 		// Ambient light can raise or lower the base light in the scene.
@@ -275,12 +294,12 @@ class Boop3D
 
 		////////////////////////////////////////////////////////////
 		// Accepts a single mesh and renders its triangles to screen.
-		// [Optional] Will also accept a pointer to another transform to use 
+		// [Optional] Will also accept a pointer to another transform to use
 		// instead of the one the mesh is using.
 		void DrawMesh( B3DMesh &m, mat4 *trans = 0 );
 
 		////////////////////////////////////////////////////////////
-		// If using the one-shot DrawMesh() or you've been drawing 
+		// If using the one-shot DrawMesh() or you've been drawing
 		// directly to our backbuffer, call this to render every-
 		// thing.
 		void Blit( void );
@@ -370,7 +389,7 @@ class Boop3D
 		/////////////////////////////////////////////////////////////////////////////
 		// Returns double buffer mem context.
 		HDC GetBackbuffer( void );
-		
+
 };
 
 #endif // BOOP_3D
