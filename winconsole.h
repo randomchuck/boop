@@ -1,12 +1,13 @@
 #ifndef _WINCONSOLE_H
 #define _WINCONSOLE_H
 
+#include <stdio.h>
 #include <io.h> // Console Generation(_open_osfhandle(), etc)
 #include <fcntl.h> // _O_TEXT
 
 /////////////////
 // CONSOLE WINDOW
-	
+
 	///////////////////////////////////////////////////////////////////////////
 	// Creates and displays a console window.
 	// You can then call writeCon() to display to the console.
@@ -17,9 +18,9 @@
 		return GetStdHandle(STD_OUTPUT_HANDLE);
 	}
 	///////////////////////////////////////////////////////////////////////////
-	// Call mapCon() immediately after initCon() 
+	// Call mapCon() immediately after initCon()
 	// to map input and output to our new console window.
-	// You need this so printf()'s and scanf()'s and such 
+	// You need this so printf()'s and scanf()'s and such
 	// will work properly. Otherwise, use writeCon() and readCon().
 	void mapCon(HANDLE conHandle) {
 
@@ -52,7 +53,7 @@
 	void cleanCon(void) {
 		FreeConsole();
 	}
-	
+
 
 // CONSOLE WINDOW
 /////////////////
@@ -60,27 +61,27 @@
 //////////
 // Thread
 
-// This code came about because calls to printf() 
-// in a tight thread loop serverely slowed the 
-// calling thread down. So we create a string 
-// printing thread to load the console and 
-// print to it. You'll still get some slow-down 
-// but it a least won't take up ALL of the 
+// This code came about because calls to printf()
+// in a tight thread loop serverely slowed the
+// calling thread down. So we create a string
+// printing thread to load the console and
+// print to it. You'll still get some slow-down
+// but it a least won't take up ALL of the
 // calling thread's time.
-// 
-// Now for the next issue. Back2Back calls to 
+//
+// Now for the next issue. Back2Back calls to
 // printStr() will cause prints to be missed.
 // The memcpy() and printf() under the hood take
-// a while to finish, so it might skip printStr() 
+// a while to finish, so it might skip printStr()
 // number 2.
-// 
-// TODO: Add mechanism to buffer strings passed 
+//
+// TODO: Add mechanism to buffer strings passed
 // to printStr().
 
-// Usage: Call TrySubmitThreadpoolCallback(). Then 
+// Usage: Call TrySubmitThreadpoolCallback(). Then
 // you can call printStr() to send strings to print
-// to the thread. Set threadRun to false to shutdown 
-// the thread entirely. You'll have to set threadRun 
+// to the thread. Set threadRun to false to shutdown
+// the thread entirely. You'll have to set threadRun
 // to true then call TrySubmit() again to restart it.
 
 /*
@@ -93,11 +94,11 @@
 	static int ptState = PTIDLE;
 	char ptStrBuffer[100] = {0};
 	void CALLBACK printerThread(PTP_CALLBACK_INSTANCE instance, void *context) {
-		
+
 		// Console window. Init and map printf/scanf().
 		HANDLE consoleHandle = initCon();
 		mapCon(consoleHandle);
-		
+
 		while(threadRun) {
 			if( ptState == PTSTRREADY ) {
 				ptState = PTPRINTING;
@@ -106,7 +107,7 @@
 				ptState = PTIDLE;
 			}
 		}
-			
+
 		// Clean up console window.
 		cleanCon();
 	}
@@ -118,8 +119,8 @@
 			ptState = PTSTRREADY;
 		}
 	}
-	
-	
+
+
 	// Create string printing thread.
 	TrySubmitThreadpoolCallback(printerThread, 0, NULL);
 */

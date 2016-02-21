@@ -174,7 +174,7 @@ class Boop3D;
 
 // Multithreading Struct. Pass a unique one to the scan line
 // drawing thread func.
-#define NUM_THREADS (10)
+#define NUM_THREADS (100)
 struct ThreadStruct {
 	B3DScanLineInfo *sli;
 	Boop3D *bp;
@@ -185,11 +185,9 @@ class Boop3D
 {
 	public:
 		// Allows each thread unique data to work with.
-		long threadidx;
-		long dethread;
+		volatile long threadidx;
+		volatile long dethread;
 		ThreadStruct ts[NUM_THREADS];
-		// Console window.
-		HANDLE wincon;
 		// The window we draw to.
 		HWND windowHandle;
 		// Device and memory contexts for drawing.

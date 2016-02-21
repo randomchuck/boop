@@ -1,31 +1,35 @@
 #include "Boop3D.h"
 #include <stdio.h>
-#include "winconsole.h"
 
 CRITICAL_SECTION cs;
 
-//void CALLBACK DrawLineCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
-//	long value = InterlockedIncrement( &(((Boop3D *)context)->threadidx) );
-//	Boop3D *bp = (Boop3D *)context;
-//	// long value = -1;
-////	EnterCriticalSection(&cs);
-////		value = ++(bp->threadidx);
-////	LeaveCriticalSection(&cs);
-//	// printf("%s\n", ((Boop3D *)context)->fpsstr );
-//	// printf("%ld, %ld\n", hival, value );
-//	printf("%ld\n", value );
-//	bp->DrawTriScanLine(   bp->sli[value - 1],
-//						 *(bp->sli[value - 1].v2[0]),
-//						 *(bp->sli[value - 1].v2[1]),
-//						 *(bp->sli[value - 1].v2[2]),
-//						 *(bp->sli[value - 1].v2[3]),
-//						   bp->sli[value - 1].sclr );
-//	InterlockedIncrement( &bp->dethread );
-//}
+void CALLBACK DrawLineCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
+	long value = InterlockedIncrement( &(((Boop3D *)context)->threadidx) );
+	Boop3D *bp = (Boop3D *)context;
+	// long value = -1;
+//	EnterCriticalSection(&cs);
+//		value = ++(bp->threadidx);
+//	LeaveCriticalSection(&cs);
+	// printf("%s\n", ((Boop3D *)context)->fpsstr );
+	// printf("%ld, %ld\n", hival, value );
+	//printf("A - %ld\n", value );
+	bp->DrawTriScanLine(   bp->sli[value - 1],
+						 *(bp->sli[value - 1].v2[0]),
+						 *(bp->sli[value - 1].v2[1]),
+						 *(bp->sli[value - 1].v2[2]),
+						 *(bp->sli[value - 1].v2[3]),
+						   bp->sli[value - 1].sclr );
+	// long devalue = InterlockedIncrement( &bp->dethread );
+	long devalue = -1;
+		EnterCriticalSection(&cs);
+		devalue = ++(bp->dethread);
+		LeaveCriticalSection(&cs);
+	//printf("B - %ld\n", devalue);
+}
 
 ////////////////////////////////////////////////////////////
 // Constructor.
-Boop3D::Boop3D(): windowHandle(0), zbuffer(0) {}
+Boop3D::Boop3D() : windowHandle(0), zbuffer(0), threadidx(0), dethread(0) {}
 ////////////////////////////////////////////////////////////
 // Parameterized Constructor.
 Boop3D::Boop3D(HWND winHandle) { Initialize(winHandle); }
@@ -114,10 +118,6 @@ void Boop3D::Initialize(HWND _winHandle) {
 	// Clear screen and zbuffer.
 	Clear();
 
-	// Set up console window.
-	wincon = initCon();
-	mapCon(wincon);
-
 	// Start the thread index at the beginning.
 	threadidx = 0;
 	dethread = 0;
@@ -130,8 +130,6 @@ void Boop3D::Initialize(HWND _winHandle) {
 // our destructor. Just let Boop go out of scope.
 void Boop3D::Shutdown(void) {
 	DeleteCriticalSection(&cs);
-	// Shut down console window.
-	cleanCon();
 	// Not Init()'d so nothing to do.
 	if(windowHandle == 0)
 		return;
@@ -712,23 +710,20 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 			break;
 
 		// We only have so many threads.
-		if( false/*cursli >= NUM_THREADS*/ ) {
+		if( cursli >= NUM_THREADS ) {
 			cursli = 0;
 			// CreateThread(0, 0, DrawLineThread, this, 0, NULL);
 			// static DWORD WINAPI DrawLineThread(void *param) { return 0; }
 
-			for( int i = 0; i < NUM_THREADS; i++ ) {
-				ts[i].bp = this;
-				ts[i].sli = &sli[i];
-				// TrySubmitThreadpoolCallback(DrawLineCallback, this/*(void *)&ts[i]*/, 0);
-			}
+			for( int i = 0; i < NUM_THREADS; i++ )
+				TrySubmitThreadpoolCallback(DrawLineCallback, this, 0);
 			while( dethread < NUM_THREADS ) {}
 
 			// Start the thread index at the beginning.
 			threadidx = 0;
 			dethread = 0;
 		}
-		cursli = 0;
+		//cursli = 0;
 		sli[cursli].y = yidx;
 		if( v1v2slope > v1v3slope ) {
 			if( yidx < v2.xyz.y ) {
@@ -762,7 +757,7 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 				//
 				sli[cursli].sclr = _tricolor;
 				//
-				DrawTriScanLine(sli[cursli], v1, v3, v1, v2, _tricolor); // Top.
+				//DrawTriScanLine(sli[cursli], v1, v3, v1, v2, _tricolor); // Top.
 				cursli++;
 			}
 			else {
@@ -795,7 +790,7 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 				//
 				sli[cursli].sclr = _tricolor;
 				//
-				DrawTriScanLine(sli[cursli], v1, v3, v2, v3, _tricolor); // Bottom.
+				//DrawTriScanLine(sli[cursli], v1, v3, v2, v3, _tricolor); // Bottom.
 				cursli++;
 			}
 		} // if( v1v2slope...
@@ -830,7 +825,7 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 				//
 				sli[cursli].sclr = _tricolor;
 				//
-				DrawTriScanLine(sli[cursli], v1, v2, v1, v3, _tricolor); // Top.
+				//DrawTriScanLine(sli[cursli], v1, v2, v1, v3, _tricolor); // Top.
 				cursli++;
 			}
 			else {
@@ -863,11 +858,23 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 				//
 				sli[cursli].sclr = _tricolor;
 				//
-				DrawTriScanLine(sli[cursli], v2, v3, v1, v3, _tricolor); // Bottom.
+				//DrawTriScanLine(sli[cursli], v2, v3, v1, v3, _tricolor); // Bottom.
 				cursli++;
 			}
 		}
 	} // for(int yidx...
+
+	// Handle leftover lines.
+	if (cursli > 0) {
+
+		// Start the thread index at the beginning.
+		threadidx = 0;
+		dethread = 0;
+		// Use a few threads to draw the rest.
+		for (int i = 0; i < cursli; i++)
+			TrySubmitThreadpoolCallback(DrawLineCallback, this, 0);
+		while (dethread < cursli) {}
+	}
 
 	// We just rendered triangle.
 	// Update amount we've been showing the user.
