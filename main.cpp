@@ -4,7 +4,6 @@
 #include "stdafx.h"
 #include "Boop.h"
 #include "Boop3D.h"
-#include "winconsole.h"
 
 // Memory leak detection!!!!!
 // Call _CrtDumpMemoryLeaks after main has returned and before program terminates.
@@ -63,7 +62,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	// boop.LoadMesh("box_v_uv_n.obj", "roadtile_1024x1024.bmp");
 //	boop.LoadMesh("stylus.obj", "roadtile_1024x1024.bmp");
 
-	boop.LoadMesh("arnold.obj", "roadtile.bmp");
+	boop.LoadMesh("bman2.obj", "rainbow.bmp");
 	// boop.LoadMesh("bman.obj", "yellow.bmp");
 	//boop.LoadMesh("bman.obj", "roadtile_1024x1024.bmp");
 	//boop.LoadMesh("bman.obj", "red.bmp");
@@ -81,12 +80,6 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	// boop.LoadMesh("roadtile.obj", "roadtile_1024x1024.bmp");
 	// boop.LoadMesh("box_v_uv_n.obj", "texture.bmp");
 	// boop.LoadMesh("box_v_uv_n.obj", "roadtile_1024x1024.bmp");
-
-	// Set up console window.
-	wincon = initCon();
-	mapCon(wincon);
-	printf("Boop3D Starting...\n");
-	// writeCon(wincon, "Boop3D Starting...\n");
 
 	// Main message loop:
 	while(true)
@@ -174,9 +167,6 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	// top of this main. Must be at top... or at least before
 	// you declare variables and such.
 	// boop.Shutdown();
-
-	// Shut down console window.
-	cleanCon();
 
 	return (int) msg.wParam;
 }

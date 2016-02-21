@@ -19,11 +19,11 @@ void CALLBACK DrawLineCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
 						 *(bp->sli[value - 1].v2[2]),
 						 *(bp->sli[value - 1].v2[3]),
 						   bp->sli[value - 1].sclr );
-	// long devalue = InterlockedIncrement( &bp->dethread );
-	long devalue = -1;
+	long devalue = InterlockedIncrement( &bp->dethread );
+	/*long devalue = -1;
 		EnterCriticalSection(&cs);
 		devalue = ++(bp->dethread);
-		LeaveCriticalSection(&cs);
+		LeaveCriticalSection(&cs);*/
 	//printf("B - %ld\n", devalue);
 }
 
