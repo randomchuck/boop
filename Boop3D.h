@@ -12,7 +12,7 @@
 			* Store potientially reusable variables.
 			* << and >> when you can.
 			* Triple-check Render() method and any methods it calls.
-			* Threads!
+			* DONE - Threads!
 			* Check [] with matrices and vectors. Switch to explicit
 			vec3.x instead of vec3[0]. Same with mat4.
 			* Cut down on calculations.
@@ -174,7 +174,7 @@ class Boop3D;
 
 // Multithreading Struct. Pass a unique one to the scan line
 // drawing thread func.
-#define NUM_THREADS (100)
+#define NUM_THREADS (1)
 struct ThreadStruct {
 	B3DScanLineInfo *sli;
 	Boop3D *bp;
@@ -284,7 +284,7 @@ class Boop3D
 		////////////////////////////////////////////////////////////
 		// Takes a point and a matrix and "projects" it into the
 		// screen.
-		vec3 Project( vec3 point, mat4 mvpmatrix );
+		vec3 Project( vec3 *point, mat4 *mvpmatrix );
 
 		////////////////////////////////////////////////////////////
 		// Called in a loop. Traverses mesh list and draws them all.
@@ -301,6 +301,14 @@ class Boop3D
 		// directly to our backbuffer, call this to render every-
 		// thing.
 		void Blit( void );
+
+		////////////////////////////////////////////////////////////
+		// Faster than vanilla mat4 *operator.
+		void FastMat4Mult( mat4 *dest, mat4 *m1, mat4 *m2 );
+
+		////////////////////////////////////////////////////////////
+		// Faster than vanilla glml transpose().
+		void FastMat4Transpose( mat4 *dest, mat4 *m );
 
 		////////////////////////////////////////////////////////////
 		// Draws a single triangle. Performs back-face culling and

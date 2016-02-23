@@ -376,23 +376,23 @@ B3DMesh *Boop3D::GetMesh(int idx) {
 ////////////////////////////////////////////////////////////
 // Takes a point and a matrix and "projects" it into the
 // screen.
-vec3 Boop3D::Project( vec3 point, mat4 mvpmatrix ) {
+vec3 Boop3D::Project( vec3 *point, mat4 *mvpmatrix ) {
 	// Transform the point in 3D first.
-	mat4 pntmtx(point);
-	mat4 finalmtx = mvpmatrix * pntmtx;
+	mat4 pntmtx(*point);
+	mat4 finalmtx = *mvpmatrix * pntmtx;
 	// Compensate for view.
-	point.x = finalmtx[3].x - viewmat[3].x;
-	point.y = finalmtx[3].y - viewmat[3].y;
-	point.z = finalmtx[3].z - viewmat[3].z;
+	(*point).x = finalmtx[3].x - viewmat[3].x;
+	(*point).y = finalmtx[3].y - viewmat[3].y;
+	(*point).z = finalmtx[3].z - viewmat[3].z;
 
 	// Project this point from 3D to 2D. Typicall accomplished
 	// by dividing by z.
 	vec3 result;
 	int half_screen_width = clirect.right / 2;
 	int half_screen_height = clirect.bottom / 2;
-	result.x = ((point.x * half_screen_width / point.z) + half_screen_width);
-	result.y = (-(point.y * half_screen_height  / point.z) + half_screen_height);
-	result.z = point.z;
+	result.x = (((*point).x * half_screen_width / (*point).z) + half_screen_width);
+	result.y = (-((*point).y * half_screen_height  / (*point).z) + half_screen_height);
+	result.z = (*point).z;
 	// Return 2D point.
 	return result;
 
@@ -423,8 +423,8 @@ void Boop3D::Render(void) {
 			SelectObject(hdcMem, hRedPen);
 
 		// Rotate and scale this mesh's matrix.
-		mat4 rotamtx = rotate( rot, vec3(0, 1, 0) );
-		mat4 scalemtx = scale( vec3(1.0f, 1.0f, 1.0f) );
+		/*mat4 rotamtx = rotate( rot, vec3(0, 1, 0) );
+		mat4 scalemtx = scale( vec3(1.0f, 1.0f, 1.0f) );*/
 //		meshlist[midx].matrix = mat4( meshlist[midx].matrix[3] ) *
 //								rotamtx *
 //								scalemtx;
@@ -495,14 +495,348 @@ void Boop3D::Blit( void ) {
 }
 
 ////////////////////////////////////////////////////////////
+// Faster than vanilla mat4 *operator.
+void Boop3D::FastMat4Mult( mat4 *dest, mat4 *m1, mat4 *m2 ) {
+
+	/*float wun = m1->columns[0].x;
+	float too = m2->columns[0].x;
+	float res = 0.0f;*/
+	/*__asm {
+	__asm mov eax, wun
+	__asm mov ecx, too
+	__asm mul ecx
+	__asm mov res, 1234
+	}*/
+
+	/*float asdf = m1->columns[0].x * m2->columns[0].x;
+	float asdf2 = 0.0f;
+	__asm {
+		mov  eax, dword ptr [m1]
+		fld		  dword ptr [eax]
+		mov  ecx, dword ptr [m2]
+		fmul	  dword ptr [ecx]
+		fstp	  dword ptr [asdf2]
+	}*/
+
+	
+	dest->columns[0].x = m1->columns[0].x * m2->columns[0].x + 
+						 m1->columns[1].x * m2->columns[0].y + 
+						 m1->columns[2].x * m2->columns[0].z + 
+						 m1->columns[3].x * m2->columns[0].w;
+	dest->columns[1].x = m1->columns[0].x * m2->columns[1].x + 
+						 m1->columns[1].x * m2->columns[1].y + 
+						 m1->columns[2].x * m2->columns[1].z + 
+						 m1->columns[3].x * m2->columns[1].w;
+	dest->columns[2].x = m1->columns[0].x * m2->columns[2].x + 
+						 m1->columns[1].x * m2->columns[2].y + 
+						 m1->columns[2].x * m2->columns[2].z + 
+						 m1->columns[3].x * m2->columns[2].w;
+	dest->columns[3].x = m1->columns[0].x * m2->columns[3].x + 
+						 m1->columns[1].x * m2->columns[3].y + 
+						 m1->columns[2].x * m2->columns[3].z + 
+						 m1->columns[3].x * m2->columns[3].w;
+	dest->columns[0].y = m1->columns[0].y * m2->columns[0].x + 
+						 m1->columns[1].y * m2->columns[0].y + 
+						 m1->columns[2].y * m2->columns[0].z + 
+						 m1->columns[3].y * m2->columns[0].w;
+	dest->columns[1].y = m1->columns[0].y * m2->columns[1].x + 
+						 m1->columns[1].y * m2->columns[1].y + 
+						 m1->columns[2].y * m2->columns[1].z + 
+						 m1->columns[3].y * m2->columns[1].w;
+	dest->columns[2].y = m1->columns[0].y * m2->columns[2].x + 
+						 m1->columns[1].y * m2->columns[2].y + 
+						 m1->columns[2].y * m2->columns[2].z + 
+						 m1->columns[3].y * m2->columns[2].w;
+	dest->columns[3].y = m1->columns[0].y * m2->columns[3].x + 
+						 m1->columns[1].y * m2->columns[3].y + 
+						 m1->columns[2].y * m2->columns[3].z + 
+						 m1->columns[3].y * m2->columns[3].w;
+	dest->columns[0].z = m1->columns[0].z * m2->columns[0].x + 
+						 m1->columns[1].z * m2->columns[0].y + 
+						 m1->columns[2].z * m2->columns[0].z + 
+						 m1->columns[3].z * m2->columns[0].w;
+	dest->columns[1].z = m1->columns[0].z * m2->columns[1].x + 
+						 m1->columns[1].z * m2->columns[1].y + 
+						 m1->columns[2].z * m2->columns[1].z + 
+						 m1->columns[3].z * m2->columns[1].w;
+	dest->columns[2].z = m1->columns[0].z * m2->columns[2].x + 
+						 m1->columns[1].z * m2->columns[2].y + 
+						 m1->columns[2].z * m2->columns[2].z + 
+						 m1->columns[3].z * m2->columns[2].w;
+	dest->columns[3].z = m1->columns[0].z * m2->columns[3].x + 
+						 m1->columns[1].z * m2->columns[3].y + 
+						 m1->columns[2].z * m2->columns[3].z + 
+						 m1->columns[3].z * m2->columns[3].w;
+	dest->columns[0].w = m1->columns[0].w * m2->columns[0].x + 
+						 m1->columns[1].w * m2->columns[0].y + 
+						 m1->columns[2].w * m2->columns[0].z + 
+						 m1->columns[3].w * m2->columns[0].w;
+	dest->columns[1].w = m1->columns[0].w * m2->columns[1].x + 
+						 m1->columns[1].w * m2->columns[1].y + 
+						 m1->columns[2].w * m2->columns[1].z + 
+						 m1->columns[3].w * m2->columns[1].w;
+	dest->columns[2].w = m1->columns[0].w * m2->columns[2].x + 
+						 m1->columns[1].w * m2->columns[2].y + 
+						 m1->columns[2].w * m2->columns[2].z + 
+						 m1->columns[3].w * m2->columns[2].w;
+	dest->columns[3].w = m1->columns[0].w * m2->columns[3].x + 
+						 m1->columns[1].w * m2->columns[3].y + 
+						 m1->columns[2].w * m2->columns[3].z + 
+						 m1->columns[3].w * m2->columns[3].w;
+
+	//float f1 = m1->columns[0].x;
+	//float f2 = m2->columns[0].x;
+	//float res1, res2, res3, res4;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].x;
+	//f2 = m2->columns[0].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].x;
+	//f2 = m2->columns[0].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].x;
+	//f2 = m2->columns[0].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[0].x = res1 + res2 + res3 + res4;
+	//f1 = m1->columns[0].x;
+	//f2 = m2->columns[1].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].x;
+	//f2 = m2->columns[1].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].x;
+	//f2 = m2->columns[1].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].x;
+	//f2 = m2->columns[1].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[1].x = res1 + res2 + res3 + res4;
+	//f1 = m1->columns[0].x;
+	//f2 = m2->columns[2].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].x;
+	//f2 = m2->columns[2].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].x;
+	//f2 = m2->columns[2].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].x;
+	//f2 = m2->columns[2].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[2].x = res1 + res2 + res3 + res4;
+	//f1 = m1->columns[0].x;
+	//f2 = m2->columns[3].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].x;
+	//f2 = m2->columns[3].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].x;
+	//f2 = m2->columns[3].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].x;
+	//f2 = m2->columns[3].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[3].x = res1 + res2 + res3 + res4;
+	//// 
+	//f1 = m1->columns[0].y;
+	//f2 = m2->columns[0].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].y;
+	//f2 = m2->columns[0].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].y;
+	//f2 = m2->columns[0].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].y;
+	//f2 = m2->columns[0].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[0].y = res1 + res2 + res3 + res4;
+	//f1 = m1->columns[0].y;
+	//f2 = m2->columns[1].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].y;
+	//f2 = m2->columns[1].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].y;
+	//f2 = m2->columns[1].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].y;
+	//f2 = m2->columns[1].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[1].y = res1 + res2 + res3 + res4;
+	//f1 = m1->columns[0].y;
+	//f2 = m2->columns[2].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].y;
+	//f2 = m2->columns[2].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].y;
+	//f2 = m2->columns[2].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].y;
+	//f2 = m2->columns[2].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[2].y = res1 + res2 + res3 + res4;
+	//f1 = m1->columns[0].y;
+	//f2 = m2->columns[3].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].y;
+	//f2 = m2->columns[3].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].y;
+	//f2 = m2->columns[3].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].y;
+	//f2 = m2->columns[3].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[3].y = res1 + res2 + res3 + res4;
+	//// 
+	//f1 = m1->columns[0].z;
+	//f2 = m2->columns[0].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].z;
+	//f2 = m2->columns[0].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].z;
+	//f2 = m2->columns[0].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].z;
+	//f2 = m2->columns[0].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[0].z = res1 + res2 + res3 + res4;
+	//f1 = m1->columns[0].z;
+	//f2 = m2->columns[1].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].z;
+	//f2 = m2->columns[1].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].z;
+	//f2 = m2->columns[1].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].z;
+	//f2 = m2->columns[1].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[1].z = res1 + res2 + res3 + res4;
+	//f1 = m1->columns[0].z;
+	//f2 = m2->columns[2].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].z;
+	//f2 = m2->columns[2].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].z;
+	//f2 = m2->columns[2].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].z;
+	//f2 = m2->columns[2].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[2].z = res1 + res2 + res3 + res4;
+	//f1 = m1->columns[0].z;
+	//f2 = m2->columns[3].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].z;
+	//f2 = m2->columns[3].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].z;
+	//f2 = m2->columns[3].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].z;
+	//f2 = m2->columns[3].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[3].z = res1 + res2 + res3 + res4;
+	//// 
+	//f1 = m1->columns[0].w;
+	//f2 = m2->columns[0].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].w;
+	//f2 = m2->columns[0].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].w;
+	//f2 = m2->columns[0].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].w;
+	//f2 = m2->columns[0].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[0].w = res1 + res2 + res3 + res4;
+	//f1 = m1->columns[0].w;
+	//f2 = m2->columns[1].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].w;
+	//f2 = m2->columns[1].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].w;
+	//f2 = m2->columns[1].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].w;
+	//f2 = m2->columns[1].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[1].w = res1 + res2 + res3 + res4;
+	//f1 = m1->columns[0].w;
+	//f2 = m2->columns[2].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].w;
+	//f2 = m2->columns[2].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].w;
+	//f2 = m2->columns[2].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].w;
+	//f2 = m2->columns[2].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[2].w = res1 + res2 + res3 + res4;
+	//f1 = m1->columns[0].w;
+	//f2 = m2->columns[3].x;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+	//f1 = m1->columns[1].w;
+	//f2 = m2->columns[3].y;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+	//f1 = m1->columns[2].w;
+	//f2 = m2->columns[3].z;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+	//f1 = m1->columns[3].w;
+	//f2 = m2->columns[3].w;
+	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+	//dest->columns[3].w = res1 + res2 + res3 + res4;
+}
+
+////////////////////////////////////////////////////////////
+// Faster than vanilla glml transpose().
+void Boop3D::FastMat4Transpose( mat4 *dest, mat4 *m ) {
+	dest->columns[0].x = m->columns[0].x;
+	dest->columns[0].y = m->columns[1].x;
+	dest->columns[0].z = m->columns[2].x;
+	dest->columns[0].w = m->columns[3].x;
+	// 
+	dest->columns[1].x = m->columns[0].y;
+	dest->columns[1].y = m->columns[1].y;
+	dest->columns[1].z = m->columns[2].y;
+	dest->columns[1].w = m->columns[3].y;
+	// 
+	dest->columns[2].x = m->columns[0].z;
+	dest->columns[2].y = m->columns[1].z;
+	dest->columns[2].z = m->columns[2].z;
+	dest->columns[2].w = m->columns[3].z;
+	// 
+	dest->columns[3].x = m->columns[0].w;
+	dest->columns[3].y = m->columns[1].w;
+	dest->columns[3].z = m->columns[2].w;
+	dest->columns[3].w = m->columns[3].w;
+}
+
+////////////////////////////////////////////////////////////
 // Draws a single triangle. Performs back-face culling and
 // flat shading.
 void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, COLORREF _tricolor) {
 
 	// Get transformed vert position.
-	mat4 v1mtx = filledtrimat * mat4( tri.verts[0].xyz );
+	mat4 v1mtx; mat4 trans1( tri.verts[0].xyz );
+	FastMat4Mult( &v1mtx, &filledtrimat, &trans1 );
+	mat4 v2mtx; mat4 trans2( tri.verts[1].xyz );
+	FastMat4Mult( &v2mtx, &filledtrimat, &trans2 );
+	mat4 v3mtx; mat4 trans3( tri.verts[2].xyz );
+	FastMat4Mult( &v3mtx, &filledtrimat, &trans3 );
+	/*mat4 v1mtx = filledtrimat * mat4( tri.verts[0].xyz );
 	mat4 v2mtx = filledtrimat * mat4( tri.verts[1].xyz );
-	mat4 v3mtx = filledtrimat * mat4( tri.verts[2].xyz );
+	mat4 v3mtx = filledtrimat * mat4( tri.verts[2].xyz );*/
 
 	///////////////////
 	// Camera Cull Test
@@ -624,13 +958,34 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 
 	// Store triangle in a copy so we aren't modifying
 	// the original.
-	B3DTriangle copytri = tri;
+	// B3DTriangle copytri = tri;
+	// This is a few frames faster.
+	B3DTriangle copytri;
+	for( int v = 0; v < 3; v++ ) {
+		copytri.verts[v].xyz.x = tri.verts[v].xyz.x;
+		copytri.verts[v].xyz.y = tri.verts[v].xyz.y;
+		copytri.verts[v].xyz.z = tri.verts[v].xyz.z;
+		copytri.verts[v].xyz.w = tri.verts[v].xyz.w;
+		// 
+		copytri.verts[v].nrm.x = tri.verts[v].nrm.x;
+		copytri.verts[v].nrm.y = tri.verts[v].nrm.y;
+		copytri.verts[v].nrm.z = tri.verts[v].nrm.z;
+		copytri.verts[v].nrm.w = tri.verts[v].nrm.w;
+		// 
+		copytri.verts[v].clr.x = tri.verts[v].clr.x;
+		copytri.verts[v].clr.y = tri.verts[v].clr.y;
+		copytri.verts[v].clr.z = tri.verts[v].clr.z;
+		copytri.verts[v].clr.w = tri.verts[v].clr.w;
+		// 
+		copytri.verts[v].uv.x = tri.verts[v].uv.x;
+		copytri.verts[v].uv.y = tri.verts[v].uv.y;
+	}
 
 	// Sort vertices by y.
 	B3DVertex tempv;
-	copytri.verts[0].xyz = Project( copytri.verts[0].xyz, filledtrimat);
-	copytri.verts[1].xyz = Project( copytri.verts[1].xyz, filledtrimat);
-	copytri.verts[2].xyz = Project( copytri.verts[2].xyz, filledtrimat);
+	copytri.verts[0].xyz = Project( &copytri.verts[0].xyz, &filledtrimat);
+	copytri.verts[1].xyz = Project( &copytri.verts[1].xyz, &filledtrimat);
+	copytri.verts[2].xyz = Project( &copytri.verts[2].xyz, &filledtrimat);
 	for(int vidx = 0; vidx < 3; vidx++) {
 		for(int vidx2 = 0; vidx2 < 3; vidx2++) {
 			if( copytri.verts[vidx2].xyz.y > copytri.verts[vidx].xyz.y ) {
@@ -671,6 +1026,25 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 	mat4 nmtx1 = transpose(_pmtx) * mat4(invnrm1);
 	mat4 nmtx2 = transpose(_pmtx) * mat4(invnrm2);
 	mat4 nmtx3 = transpose(_pmtx) * mat4(invnrm3);
+	// This is a little slower than above.
+	//mat4 mtr1;
+	//FastMat4Transpose( &mtr1, &_pmtx );
+	//mat4 mn1( invnrm1 );
+	//mat4 nmtx1;
+	//FastMat4Mult( &nmtx1, &mtr1, &mn1 );
+	////
+	//mat4 mtr2;
+	//FastMat4Transpose( &mtr2, &_pmtx );
+	//mat4 mn2( invnrm2 );
+	//mat4 nmtx2;
+	//FastMat4Mult( &nmtx2, &mtr2, &mn2 );
+	////
+	//mat4 mtr3;
+	//FastMat4Transpose( &mtr3, &_pmtx );
+	//mat4 mn3( invnrm3 );
+	//mat4 nmtx3;
+	//FastMat4Mult( &nmtx3, &mtr3, &mn3 );
+	//
 	// Dot with light and clamp.
 	float dotn1 = Clamp( dot(nmtx1[3], litemtx[2]) );
 	float dotn2 = Clamp( dot(nmtx2[3], litemtx[2]) );
@@ -1267,7 +1641,13 @@ void Boop3D::DrawTriScanLine( B3DScanLineInfo &b3dsli,
 		vec3 pixclr( (float)r / 255,
 					 (float)g / 255,
 					 (float)b / 255 );
+		// This line very slow. Gained about 30fps after rolling it out.
+		// vec3 * operator creates a bunch of temporary objects.
 		pixclr = pixclr * texturecolor;
+		/*pixclr.x = pixclr.x * texturecolor.x;
+		pixclr.y = pixclr.y * texturecolor.y;
+		pixclr.z = pixclr.z * texturecolor.z;
+		pixclr.w = pixclr.w * texturecolor.w;*/
 
 		///////////////////
 		// Gouraud Shading.
@@ -1314,19 +1694,19 @@ void Boop3D::DrawWireFrameTri(B3DTriangle tri, mat4 wiretrimat) {
 	// If just ONE point is outside of the drawing area, skip whole
 	// triangle. May add logic to project point to collision
 	// position in view area with line.
-	vec3 pnt = Project( tri.verts[0].xyz, wiretrimat );
+	vec3 pnt = Project( &tri.verts[0].xyz, &wiretrimat );
 	if( !IsPointInView(pnt) ) return;
 	MoveToEx(hdcMem, (int)pnt.x, (int)pnt.y, NULL);
 
-	pnt = Project( tri.verts[1].xyz, wiretrimat );
+	pnt = Project( &tri.verts[1].xyz, &wiretrimat );
 	if( !IsPointInView(pnt) ) return;
 	LineTo(hdcMem, (int)pnt.x, (int)pnt.y);
 
-	pnt = Project( tri.verts[2].xyz, wiretrimat );
+	pnt = Project( &tri.verts[2].xyz, &wiretrimat );
 	if( !IsPointInView(pnt) ) return;
 	LineTo(hdcMem, (int)pnt.x, (int)pnt.y);
 
-	pnt = Project( tri.verts[0].xyz, wiretrimat );
+	pnt = Project( &tri.verts[0].xyz, &wiretrimat );
 	if( !IsPointInView(pnt) ) return;
 	LineTo(hdcMem, (int)pnt.x, (int)pnt.y);
 

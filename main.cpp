@@ -59,17 +59,22 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 
 	// Pass main window to Boop3D.
 	boop.Initialize(hWnd);
+	boop.SetShading(SHADING_GOURAUD);
+	boop.SetTextures(TEXTURES_ON);
 	// boop.LoadMesh("box_v_uv_n.obj", "roadtile_1024x1024.bmp");
 //	boop.LoadMesh("stylus.obj", "roadtile_1024x1024.bmp");
 
 	boop.LoadMesh("box_v_uv_n.obj", "rainbow.bmp");
+	boop.CameraStrafeTo( vec3(0, 4, 1) );
+	boop.GetMesh(0)->matrix.columns[3].y += 0.5f;
+	boop.GetMesh(0)->matrix.columns[3].z -= 1.0f;
 	// boop.LoadMesh("bman.obj", "yellow.bmp");
 	//boop.LoadMesh("bman.obj", "roadtile_1024x1024.bmp");
 	//boop.LoadMesh("bman.obj", "red.bmp");
 
 	//boop.GetMesh(0)->matrix.columns[3].x = 1.0f;
 	//boop.GetMesh(2)->matrix.columns[3].x = -1.0f;
-//	boop.GetMesh(0)->matrix.columns[3].y = 1.5f;
+	// boop.GetMesh(0)->matrix.columns[3].y = 1.5f;
 //	boop.GetMesh(1)->matrix.columns[3].y = 1.5f;
 
 	// boop.GetMesh(0)->matrix *= scale( vec3(2, 2, 2) );
