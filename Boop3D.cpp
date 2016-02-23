@@ -979,6 +979,10 @@ void Boop3D::DrawTriScanLine( B3DScanLineInfo &b3dsli,
 	}
 
 	// Draw the line.
+	vec3 texturecolor;
+	float zgradient = 0.0f;
+	float z = 0.0f;
+	int yof = clirect.right * b3dsli.y;
 	for(int pixl = sx; pixl < ex; pixl++) {
 
 		// Make sure the pixel is within the
@@ -990,14 +994,17 @@ void Boop3D::DrawTriScanLine( B3DScanLineInfo &b3dsli,
 			continue;
 
 		// Z-Buffer.
-		float zgradient = (float)(pixl - sx) / (float)(ex - sx);
-		float z = Interpolate(z1, z2, zgradient);
-		if( zbuffer[clirect.right * b3dsli.y + pixl] < z )
+		zgradient = (float)(pixl - sx) / (float)(ex - sx);
+		z = Interpolate(z1, z2, zgradient);
+		if (zbuffer[yof + pixl] < z)
 			continue;
-		zbuffer[clirect.right * b3dsli.y + pixl] = z;
+		zbuffer[yof + pixl] = z;
 
 		// Texture color - White and full alpha.
-		vec3 texturecolor(1, 1, 1, 1);
+		texturecolor.x = 1.0f;
+		texturecolor.y = 1.0f;
+		texturecolor.z = 1.0f;
+		texturecolor.w = 1.0f;
 
 		/////////////////////////////////
 		// Perspective Correct Texturing.
@@ -1274,11 +1281,11 @@ void Boop3D::DrawTriScanLine( B3DScanLineInfo &b3dsli,
 		///////////////////
 
 		// Put pixel.
-		int pxlidx = clirect.right * 4 * b3dsli.y + pixl * 4;
-		bmbuffer [pxlidx + 0] = (unsigned char)(255 * pixclr.z);
-		bmbuffer[clirect.right * 4 * b3dsli.y + pixl * 4 + 1] = (unsigned char)(255 * pixclr.y);
-		bmbuffer[clirect.right * 4 * b3dsli.y + pixl * 4 + 2] = (unsigned char)(255 * pixclr.x);
-		bmbuffer[clirect.right * 4 * b3dsli.y + pixl * 4 + 3] = 0xFF;
+		int startoff = yof * 4 + pixl * 4;
+		bmbuffer[startoff + 0] = (unsigned char)(255 * pixclr.z);
+		bmbuffer[startoff + 1] = (unsigned char)(255 * pixclr.y);
+		bmbuffer[startoff + 2] = (unsigned char)(255 * pixclr.x);
+		bmbuffer[startoff + 3] = 0xFF;
 
 	} // for(int pixl...
 

@@ -62,7 +62,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	// boop.LoadMesh("box_v_uv_n.obj", "roadtile_1024x1024.bmp");
 //	boop.LoadMesh("stylus.obj", "roadtile_1024x1024.bmp");
 
-	boop.LoadMesh("bman2.obj", "rainbow.bmp");
+	boop.LoadMesh("box_v_uv_n.obj", "rainbow.bmp");
 	// boop.LoadMesh("bman.obj", "yellow.bmp");
 	//boop.LoadMesh("bman.obj", "roadtile_1024x1024.bmp");
 	//boop.LoadMesh("bman.obj", "red.bmp");
@@ -228,8 +228,8 @@ hWnd = CreateWindow(szWindowClass,
                     /*WS_OVERLAPPEDWINDOW*/WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX/* | WS_MAXIMIZEBOX*/,
                     CW_USEDEFAULT,
                     0,
-                    1280,
-                    1020,
+                    800,
+                    600,
                     /*CW_USEDEFAULT, 0,*/ NULL,
                     NULL,
                     hInstance,
