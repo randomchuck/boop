@@ -143,6 +143,7 @@ void Boop3D::Shutdown(void) {
 	DeleteObject(hRedPen);
 	for(int midx = 0; midx < (int)meshlist.size(); midx++) {
 		meshlist[midx].tris.clear();
+		delete [] meshlist[midx].ptris;
 		// Sometimes textures won't be loaded.
 		if(meshlist[midx].texturebuffer)
 			delete [] (meshlist[midx].texturebuffer);
@@ -347,6 +348,12 @@ void Boop3D::LoadMesh(string filepath, string texturepath) {
 
 	}
 
+	int sz = mesh.tris.size();
+	mesh.ptris = new B3DTriangle[ sz ];
+	for( int t = 0; t < sz; t++ ) {
+		mesh.ptris[t] = mesh.tris[t];
+	}
+
 	// Set transform to an identity matrix.
 	mesh.matrix = mat4();
 
@@ -376,23 +383,23 @@ B3DMesh *Boop3D::GetMesh(int idx) {
 ////////////////////////////////////////////////////////////
 // Takes a point and a matrix and "projects" it into the
 // screen.
-vec3 Boop3D::Project( vec3 *point, mat4 *mvpmatrix ) {
+vec3 Boop3D::Project( vec3 point, mat4 *mvpmatrix ) {
 	// Transform the point in 3D first.
-	mat4 pntmtx(*point);
+	mat4 pntmtx(point);
 	mat4 finalmtx = *mvpmatrix * pntmtx;
 	// Compensate for view.
-	(*point).x = finalmtx[3].x - viewmat[3].x;
-	(*point).y = finalmtx[3].y - viewmat[3].y;
-	(*point).z = finalmtx[3].z - viewmat[3].z;
+	point.x = finalmtx[3].x - viewmat[3].x;
+	point.y = finalmtx[3].y - viewmat[3].y;
+	point.z = finalmtx[3].z - viewmat[3].z;
 
 	// Project this point from 3D to 2D. Typicall accomplished
 	// by dividing by z.
 	vec3 result;
 	int half_screen_width = clirect.right / 2;
 	int half_screen_height = clirect.bottom / 2;
-	result.x = (((*point).x * half_screen_width / (*point).z) + half_screen_width);
-	result.y = (-((*point).y * half_screen_height  / (*point).z) + half_screen_height);
-	result.z = (*point).z;
+	result.x = ((point.x * half_screen_width / point.z) + half_screen_width);
+	result.y = (-(point.y * half_screen_height  / point.z) + half_screen_height);
+	result.z = point.z;
 	// Return 2D point.
 	return result;
 
@@ -475,7 +482,8 @@ void Boop3D::DrawMesh( B3DMesh &m, mat4 *trans/* = 0*/ ) {
 
 
 	// Draw every triangle.
-	for(unsigned int tidx = 0; tidx < m.tris.size(); tidx++) {
+	int sz = m.tris.size();
+	for(unsigned int tidx = 0; tidx < sz; tidx++) {
 		// Wireframe.
 		if( SHADING == SHADING_WIRE )
 			DrawWireFrameTri( m.tris[tidx], mtx );
@@ -983,9 +991,9 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 
 	// Sort vertices by y.
 	B3DVertex tempv;
-	copytri.verts[0].xyz = Project( &copytri.verts[0].xyz, &filledtrimat);
-	copytri.verts[1].xyz = Project( &copytri.verts[1].xyz, &filledtrimat);
-	copytri.verts[2].xyz = Project( &copytri.verts[2].xyz, &filledtrimat);
+	copytri.verts[0].xyz = Project( copytri.verts[0].xyz, &filledtrimat);
+	copytri.verts[1].xyz = Project( copytri.verts[1].xyz, &filledtrimat);
+	copytri.verts[2].xyz = Project( copytri.verts[2].xyz, &filledtrimat);
 	for(int vidx = 0; vidx < 3; vidx++) {
 		for(int vidx2 = 0; vidx2 < 3; vidx2++) {
 			if( copytri.verts[vidx2].xyz.y > copytri.verts[vidx].xyz.y ) {
@@ -1690,23 +1698,23 @@ float Boop3D::Interpolate(float min, float max, float gradient) {
 ////////////////////////////////////////////////////////////
 // Takes a triangle and matrix. Draws 3 lines between vertices
 // instead of a filled triangle.
-void Boop3D::DrawWireFrameTri(B3DTriangle tri, mat4 wiretrimat) {
+void Boop3D::DrawWireFrameTri(B3DTriangle &tri, mat4 &wiretrimat) {
 	// If just ONE point is outside of the drawing area, skip whole
 	// triangle. May add logic to project point to collision
 	// position in view area with line.
-	vec3 pnt = Project( &tri.verts[0].xyz, &wiretrimat );
+	vec3 pnt = Project( tri.verts[0].xyz, &wiretrimat );
 	if( !IsPointInView(pnt) ) return;
 	MoveToEx(hdcMem, (int)pnt.x, (int)pnt.y, NULL);
 
-	pnt = Project( &tri.verts[1].xyz, &wiretrimat );
+	pnt = Project( tri.verts[1].xyz, &wiretrimat );
 	if( !IsPointInView(pnt) ) return;
 	LineTo(hdcMem, (int)pnt.x, (int)pnt.y);
 
-	pnt = Project( &tri.verts[2].xyz, &wiretrimat );
+	pnt = Project( tri.verts[2].xyz, &wiretrimat );
 	if( !IsPointInView(pnt) ) return;
 	LineTo(hdcMem, (int)pnt.x, (int)pnt.y);
 
-	pnt = Project( &tri.verts[0].xyz, &wiretrimat );
+	pnt = Project( tri.verts[0].xyz, &wiretrimat );
 	if( !IsPointInView(pnt) ) return;
 	LineTo(hdcMem, (int)pnt.x, (int)pnt.y);
 

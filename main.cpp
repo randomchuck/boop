@@ -64,7 +64,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	// boop.LoadMesh("box_v_uv_n.obj", "roadtile_1024x1024.bmp");
 //	boop.LoadMesh("stylus.obj", "roadtile_1024x1024.bmp");
 
-	boop.LoadMesh("box_v_uv_n.obj", "rainbow.bmp");
+	boop.LoadMesh("bman2.obj", "rainbow.bmp");
 	boop.CameraStrafeTo( vec3(0, 4, 1) );
 	boop.GetMesh(0)->matrix.columns[3].y += 0.5f;
 	boop.GetMesh(0)->matrix.columns[3].z -= 1.0f;

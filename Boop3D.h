@@ -163,6 +163,7 @@ struct B3DTriangle {
 // texture(no multitexturing yet), and texture dimensions.
 struct B3DMesh {
 	vector<B3DTriangle> tris;
+	B3DTriangle *ptris;
 	mat4 matrix;
 	float width, height, depth;
 	unsigned char *texturebuffer;
@@ -284,7 +285,7 @@ class Boop3D
 		////////////////////////////////////////////////////////////
 		// Takes a point and a matrix and "projects" it into the
 		// screen.
-		vec3 Project( vec3 *point, mat4 *mvpmatrix );
+		vec3 Project( vec3 point, mat4 *mvpmatrix );
 
 		////////////////////////////////////////////////////////////
 		// Called in a loop. Traverses mesh list and draws them all.
@@ -341,7 +342,7 @@ class Boop3D
 		////////////////////////////////////////////////////////////
 		// Takes a triangle and matrix. Draws 3 lines between vertices
 		// instead of a filled triangle.
-		void DrawWireFrameTri(B3DTriangle tri, mat4 wiretrimat);
+		void DrawWireFrameTri(B3DTriangle &tri, mat4 &wiretrimat);
 
 		////////////////////////////////////////////////////////////
 		// Checks point against screen boundaries.
