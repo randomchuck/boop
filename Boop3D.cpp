@@ -1643,11 +1643,11 @@ void Boop3D::DrawTriScanLine( B3DScanLineInfo &b3dsli,
 					 (float)b / 255 );
 		// This line very slow. Gained about 30fps after rolling it out.
 		// vec3 * operator creates a bunch of temporary objects.
-		pixclr = pixclr * texturecolor;
-		/*pixclr.x = pixclr.x * texturecolor.x;
+		// pixclr = pixclr * texturecolor;
+		pixclr.x = pixclr.x * texturecolor.x;
 		pixclr.y = pixclr.y * texturecolor.y;
 		pixclr.z = pixclr.z * texturecolor.z;
-		pixclr.w = pixclr.w * texturecolor.w;*/
+		pixclr.w = pixclr.w * texturecolor.w;
 
 		///////////////////
 		// Gouraud Shading.
