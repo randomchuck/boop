@@ -143,7 +143,6 @@ void Boop3D::Shutdown(void) {
 	DeleteObject(hRedPen);
 	for(int midx = 0; midx < (int)meshlist.size(); midx++) {
 		meshlist[midx].tris.clear();
-		delete [] meshlist[midx].ptris;
 		// Sometimes textures won't be loaded.
 		if(meshlist[midx].texturebuffer)
 			delete [] (meshlist[midx].texturebuffer);
@@ -348,12 +347,6 @@ void Boop3D::LoadMesh(string filepath, string texturepath) {
 
 	}
 
-	int sz = mesh.tris.size();
-	mesh.ptris = new B3DTriangle[ sz ];
-	for( int t = 0; t < sz; t++ ) {
-		mesh.ptris[t] = mesh.tris[t];
-	}
-
 	// Set transform to an identity matrix.
 	mesh.matrix = mat4();
 
@@ -483,12 +476,14 @@ void Boop3D::DrawMesh( B3DMesh &m, mat4 *trans/* = 0*/ ) {
 
 	// Draw every triangle.
 	int sz = m.tris.size();
+	COLORREF tmpclr = RGB(255, 255, 255);
 	for(unsigned int tidx = 0; tidx < sz; tidx++) {
 		// Wireframe.
 		if( SHADING == SHADING_WIRE )
 			DrawWireFrameTri( m.tris[tidx], mtx );
 		else
 			DrawFilledTri( m.tris[tidx], mtx, m.matrix, RGB(255, 255, 255) ); // Shaded... or not.
+		
 	} // for each(B3DTriangle...
 
 } // DrawMesh()
@@ -504,7 +499,7 @@ void Boop3D::Blit( void ) {
 
 ////////////////////////////////////////////////////////////
 // Faster than vanilla mat4 *operator.
-void Boop3D::FastMat4Mult( mat4 *dest, mat4 *m1, mat4 *m2 ) {
+void Boop3D::FastMat4Mult( mat4 *dest, const mat4 *m1, const mat4 *m2 ) {
 
 	/*float wun = m1->columns[0].x;
 	float too = m2->columns[0].x;
@@ -526,8 +521,86 @@ void Boop3D::FastMat4Mult( mat4 *dest, mat4 *m1, mat4 *m2 ) {
 		fstp	  dword ptr [asdf2]
 	}*/
 
-	
-	dest->columns[0].x = m1->columns[0].x * m2->columns[0].x + 
+	float m10x = m1->columns[0].x;
+	float m10y = m1->columns[0].y;
+	float m10z = m1->columns[0].z;
+	float m10w = m1->columns[0].w;
+	//
+	float m11x = m1->columns[1].x;
+	float m11y = m1->columns[1].y;
+	float m11z = m1->columns[1].z;
+	float m11w = m1->columns[1].w;
+	//
+	float m12x = m1->columns[2].x;
+	float m12y = m1->columns[2].y;
+	float m12z = m1->columns[2].z;
+	float m12w = m1->columns[2].w;
+	//
+	float m13x = m1->columns[3].x;
+	float m13y = m1->columns[3].y;
+	float m13z = m1->columns[3].z;
+	float m13w = m1->columns[3].w;
+	//////////////////////////////
+	float m20x = m2->columns[0].x;
+	float m20y = m2->columns[0].y;
+	float m20z = m2->columns[0].z;
+	float m20w = m2->columns[0].w;
+	//
+	float m21x = m2->columns[1].x;
+	float m21y = m2->columns[1].y;
+	float m21z = m2->columns[1].z;
+	float m21w = m2->columns[1].w;
+	//
+	float m22x = m2->columns[2].x;
+	float m22y = m2->columns[2].y;
+	float m22z = m2->columns[2].z;
+	float m22w = m2->columns[2].w;
+	//
+	float m23x = m2->columns[3].x;
+	float m23y = m2->columns[3].y;
+	float m23z = m2->columns[3].z;
+	float m23w = m2->columns[3].w;
+	//////////////////////////////
+	dest->columns[0].x = m10x * m20x + m11x * m20y + m12x * m20z + m13x * m20w;
+	dest->columns[0].y = m10y * m20x + m11y * m20y + m12y * m20z + m13y * m20w;
+	dest->columns[0].z = m10z * m20x + m11z * m20y + m12z * m20z + m13z * m20w;
+	dest->columns[0].w = m10w * m20x + m11w * m20y + m12w * m20z + m13w * m20w;
+	/////
+	dest->columns[1].x = m10x * m21x + m11x * m21y + m12x * m21z + m13x * m21w;
+	dest->columns[1].y = m10y * m21x + m11y * m21y + m12y * m21z + m13y * m21w;
+	dest->columns[1].z = m10z * m21x + m11z * m21y + m12z * m21z + m13z * m21w;
+	dest->columns[1].w = m10w * m21x + m11w * m21y + m12w * m21z + m13w * m21w;
+	/////
+	dest->columns[2].x = m10x * m22x + m11x * m22y + m12x * m22z + m13x * m22w;
+	dest->columns[2].y = m10y * m22x + m11y * m22y + m12y * m22z + m13y * m22w;
+	dest->columns[2].z = m10z * m22x + m11z * m22y + m12z * m22z + m13z * m22w;
+	dest->columns[2].w = m10w * m22x + m11w * m22y + m12w * m22z + m13w * m22w;
+	/////
+	dest->columns[3].x = m10x * m23x + m11x * m23y + m12x * m23z + m13x * m23w;
+	dest->columns[3].y = m10y * m23x + m11y * m23y + m12y * m23z + m13y * m23w;
+	dest->columns[3].z = m10z * m23x + m11z * m23y + m12z * m23z + m13z * m23w;
+	dest->columns[3].w = m10w * m23x + m11w * m23y + m12w * m23z + m13w * m23w;
+	//////////////////////////////
+	//dest->columns[0].x = m10x * m20x + m11x * m20y + m12x * m20z + m13x * m20w;
+	//dest->columns[1].x = m10x * m21x + m11x * m21y + m12x * m21z + m13x * m21w;
+	//dest->columns[2].x = m10x * m22x + m11x * m22y + m12x * m22z + m13x * m22w;
+	//dest->columns[3].x = m10x * m23x + m11x * m23y + m12x * m23z + m13x * m23w;
+	///////
+	//dest->columns[0].y = m10y * m20x + m11y * m20y + m12y * m20z + m13y * m20w;
+	//dest->columns[1].y = m10y * m21x + m11y * m21y + m12y * m21z + m13y * m21w;
+	//dest->columns[2].y = m10y * m22x + m11y * m22y + m12y * m22z + m13y * m22w;
+	//dest->columns[3].y = m10y * m23x + m11y * m23y + m12y * m23z + m13y * m23w;
+	///////
+	//dest->columns[0].z = m10z * m20x + m11z * m20y + m12z * m20z + m13z * m20w;
+	//dest->columns[1].z = m10z * m21x + m11z * m21y + m12z * m21z + m13z * m21w;
+	//dest->columns[2].z = m10z * m22x + m11z * m22y + m12z * m22z + m13z * m22w;
+	//dest->columns[3].z = m10z * m23x + m11z * m23y + m12z * m23z + m13z * m23w;
+	///////
+	//dest->columns[0].w = m10w * m20x + m11w * m20y + m12w * m20z + m13w * m20w;
+	//dest->columns[1].w = m10w * m21x + m11w * m21y + m12w * m21z + m13w * m21w;
+	//dest->columns[2].w = m10w * m22x + m11w * m22y + m12w * m22z + m13w * m22w;
+	//dest->columns[3].w = m10w * m23x + m11w * m23y + m12w * m23z + m13w * m23w;
+	/*dest->columns[0].x = m1->columns[0].x * m2->columns[0].x + 
 						 m1->columns[1].x * m2->columns[0].y + 
 						 m1->columns[2].x * m2->columns[0].z + 
 						 m1->columns[3].x * m2->columns[0].w;
@@ -590,7 +663,7 @@ void Boop3D::FastMat4Mult( mat4 *dest, mat4 *m1, mat4 *m2 ) {
 	dest->columns[3].w = m1->columns[0].w * m2->columns[3].x + 
 						 m1->columns[1].w * m2->columns[3].y + 
 						 m1->columns[2].w * m2->columns[3].z + 
-						 m1->columns[3].w * m2->columns[3].w;
+						 m1->columns[3].w * m2->columns[3].w;*/
 
 	//float f1 = m1->columns[0].x;
 	//float f2 = m2->columns[0].x;
@@ -829,23 +902,44 @@ void Boop3D::FastMat4Transpose( mat4 *dest, mat4 *m ) {
 	dest->columns[3].z = m->columns[2].w;
 	dest->columns[3].w = m->columns[3].w;
 }
+////////////////////////////////////////////////////////////
+// Quickly transforms a point with with given matrix.
+void Boop3D::FastTransformPoint( mat4 &destpnt, const mat4 &m1, const vec3 &srcpnt ) {
+	mat4 m2(0);
+	memset(&m2, 0, sizeof(float) * 12);
+	//
+	m2.columns[0].x = 1.0f;
+	m2.columns[1].y = 1.0f;
+	m2.columns[2].z = 1.0f;
+	//
+	m2.columns[3].x = srcpnt.x;
+	m2.columns[3].y = srcpnt.y;
+	m2.columns[3].z = srcpnt.z;
+	m2.columns[3].w = 1.0f;
+
+	// mat4 m2( srcpnt );
+	FastMat4Mult( &destpnt, &m1, &m2 );
+}
 
 ////////////////////////////////////////////////////////////
 // Draws a single triangle. Performs back-face culling and
 // flat shading.
-void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, COLORREF _tricolor) {
-
+void Boop3D::DrawFilledTri( B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, COLORREF _tricolor ) {
+	
 	// Get transformed vert position.
-	mat4 v1mtx; mat4 trans1( tri.verts[0].xyz );
+	mat4 v1mtx(0); FastTransformPoint( v1mtx, filledtrimat, tri.verts[0].xyz );
+	mat4 v2mtx(0); FastTransformPoint( v2mtx, filledtrimat, tri.verts[1].xyz );
+	mat4 v3mtx(0); FastTransformPoint( v3mtx, filledtrimat, tri.verts[2].xyz );
+	/*mat4 v1mtx; mat4 trans1( tri.verts[0].xyz );
 	FastMat4Mult( &v1mtx, &filledtrimat, &trans1 );
 	mat4 v2mtx; mat4 trans2( tri.verts[1].xyz );
 	FastMat4Mult( &v2mtx, &filledtrimat, &trans2 );
 	mat4 v3mtx; mat4 trans3( tri.verts[2].xyz );
-	FastMat4Mult( &v3mtx, &filledtrimat, &trans3 );
+	FastMat4Mult( &v3mtx, &filledtrimat, &trans3 );*/
 	/*mat4 v1mtx = filledtrimat * mat4( tri.verts[0].xyz );
 	mat4 v2mtx = filledtrimat * mat4( tri.verts[1].xyz );
 	mat4 v3mtx = filledtrimat * mat4( tri.verts[2].xyz );*/
-
+	
 	///////////////////
 	// Camera Cull Test
 
@@ -892,9 +986,9 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 			// Create vectors from far camera plane to vertices.
 			const float fardist = 100.0f;
 			vec3 farCamPos = vec3( viewmat[3].x + viewmat[2].x * fardist, viewmat[3].y + viewmat[2].y * fardist, viewmat[3].z  + viewmat[2].z * fardist );
-			vec3 v1vec = vec3( v1mtx[3].x - farCamPos.x, v1mtx[3].y - farCamPos.y, v1mtx[3].z - farCamPos.z );
-			vec3 v2vec = vec3( v2mtx[3].x - farCamPos.x, v2mtx[3].y - farCamPos.y, v2mtx[3].z - farCamPos.z );
-			vec3 v3vec = vec3( v3mtx[3].x - farCamPos.x, v3mtx[3].y - farCamPos.y, v3mtx[3].z - farCamPos.z );
+			vec3 v1vec( v1mtx[3].x - farCamPos.x, v1mtx[3].y - farCamPos.y, v1mtx[3].z - farCamPos.z );
+			vec3 v2vec( v2mtx[3].x - farCamPos.x, v2mtx[3].y - farCamPos.y, v2mtx[3].z - farCamPos.z );
+			vec3 v3vec( v3mtx[3].x - farCamPos.x, v3mtx[3].y - farCamPos.y, v3mtx[3].z - farCamPos.z );
 
 			// Dot with negated camera at vector. This is our far plane normal.
 			float dotv1z = dot( v1vec, viewmat[2] * -1.0f );
@@ -1031,27 +1125,27 @@ void Boop3D::DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, CO
 	invnrm3.x *= -1;
 	invnrm3.y *= -1;
 	// Move normal into world.
-	mat4 nmtx1 = transpose(_pmtx) * mat4(invnrm1);
+	/*mat4 nmtx1 = transpose(_pmtx) * mat4(invnrm1);
 	mat4 nmtx2 = transpose(_pmtx) * mat4(invnrm2);
-	mat4 nmtx3 = transpose(_pmtx) * mat4(invnrm3);
+	mat4 nmtx3 = transpose(_pmtx) * mat4(invnrm3);*/
 	// This is a little slower than above.
-	//mat4 mtr1;
-	//FastMat4Transpose( &mtr1, &_pmtx );
-	//mat4 mn1( invnrm1 );
-	//mat4 nmtx1;
-	//FastMat4Mult( &nmtx1, &mtr1, &mn1 );
-	////
-	//mat4 mtr2;
-	//FastMat4Transpose( &mtr2, &_pmtx );
-	//mat4 mn2( invnrm2 );
-	//mat4 nmtx2;
-	//FastMat4Mult( &nmtx2, &mtr2, &mn2 );
-	////
-	//mat4 mtr3;
-	//FastMat4Transpose( &mtr3, &_pmtx );
-	//mat4 mn3( invnrm3 );
-	//mat4 nmtx3;
-	//FastMat4Mult( &nmtx3, &mtr3, &mn3 );
+	mat4 mtr1(0);
+	FastMat4Transpose( &mtr1, &_pmtx );
+	mat4 mn1( invnrm1 );
+	mat4 nmtx1(0);
+	FastMat4Mult( &nmtx1, &mtr1, &mn1 );
+	//
+	mat4 mtr2(0);
+	FastMat4Transpose( &mtr2, &_pmtx );
+	mat4 mn2( invnrm2 );
+	mat4 nmtx2(0);
+	FastMat4Mult( &nmtx2, &mtr2, &mn2 );
+	//
+	mat4 mtr3(0);
+	FastMat4Transpose( &mtr3, &_pmtx );
+	mat4 mn3( invnrm3 );
+	mat4 nmtx3(0);
+	FastMat4Mult( &nmtx3, &mtr3, &mn3 );
 	//
 	// Dot with light and clamp.
 	float dotn1 = Clamp( dot(nmtx1[3], litemtx[2]) );

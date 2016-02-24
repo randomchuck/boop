@@ -63,11 +63,10 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	boop.SetTextures(TEXTURES_ON);
 	// boop.LoadMesh("box_v_uv_n.obj", "roadtile_1024x1024.bmp");
 //	boop.LoadMesh("stylus.obj", "roadtile_1024x1024.bmp");
-
-	boop.LoadMesh("bman2.obj", "rainbow.bmp");
+	boop.LoadMesh("bman2_3015_Tris.obj", "rainbow.bmp");
 	boop.CameraStrafeTo( vec3(0, 4, 1) );
-	boop.GetMesh(0)->matrix.columns[3].y += 0.5f;
-	boop.GetMesh(0)->matrix.columns[3].z -= 1.0f;
+	boop.GetMesh(0)->matrix.columns[3].y += 1.0f;
+	boop.GetMesh(0)->matrix.columns[3].z = 1.5f;
 	// boop.LoadMesh("bman.obj", "yellow.bmp");
 	//boop.LoadMesh("bman.obj", "roadtile_1024x1024.bmp");
 	//boop.LoadMesh("bman.obj", "red.bmp");
@@ -233,8 +232,8 @@ hWnd = CreateWindow(szWindowClass,
                     /*WS_OVERLAPPEDWINDOW*/WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX/* | WS_MAXIMIZEBOX*/,
                     CW_USEDEFAULT,
                     0,
-                    800,
-                    600,
+                    1280,
+                    1024,
                     /*CW_USEDEFAULT, 0,*/ NULL,
                     NULL,
                     hInstance,

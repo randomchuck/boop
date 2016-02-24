@@ -3,6 +3,8 @@
 		PERFORMANCE:
 			* DONE - Add references to functions so we're not copying so much.
 			* Switch to TemplateLinkedList3.5.h instead of vector. Test speed.
+			- NOTE: Tested dynamic array of B3DTriangles. Was ONE frame faster.
+					Opted to stick with vectors for now.
 			* Possibly switch to contiguous arrays of simple types instead of
 			  B3DVertex.
 			* DONE - Draw to buffer instead of Window's calls to DC.
@@ -47,10 +49,10 @@
 			* Comments... everywhere.
 			* Function Header-comments.
 		FEATURE TODO:
-			* Perspective-correct texture mapping.
+			* DONE/ISH - WARPING - Perspective-correct texture mapping.
 			* Multitexturing.
 			* Bump/Normal Mapping.
-			* Done - Add function to retrieve mesh in list.
+			* DONE - Add function to retrieve mesh in list.
 			* Camera functions(translate, rotate, etc.)
 			* Mesh functions(translate, scale, rotate, etc.)
 			* Change textures on the fly.
@@ -134,13 +136,13 @@ struct B3DVertex;
 
 // Information passed to scanline drawing function.
 struct B3DScanLineInfo {
-	int y;
 	float dota;
 	float dotb;
 	float dotc;
 	float dotd;
 	float ua, ub, uc, ud;
 	float va, vb, vc, vd;
+	int y;
 	B3DVertex *v[4];
 	mat4 *m;
 	B3DVertex *v2[4];
@@ -163,11 +165,10 @@ struct B3DTriangle {
 // texture(no multitexturing yet), and texture dimensions.
 struct B3DMesh {
 	vector<B3DTriangle> tris;
-	B3DTriangle *ptris;
 	mat4 matrix;
+	int txwidth, txheight, txdepth;
 	float width, height, depth;
 	unsigned char *texturebuffer;
-	int txwidth, txheight, txdepth;
 };
 
 // For-dec so ThreadStruct knows what's going on.
@@ -305,17 +306,22 @@ class Boop3D
 
 		////////////////////////////////////////////////////////////
 		// Faster than vanilla mat4 *operator.
-		void FastMat4Mult( mat4 *dest, mat4 *m1, mat4 *m2 );
+		void FastMat4Mult( mat4 *dest, const mat4 *m1, const mat4 *m2 );
 
 		////////////////////////////////////////////////////////////
 		// Faster than vanilla glml transpose().
 		void FastMat4Transpose( mat4 *dest, mat4 *m );
 
 		////////////////////////////////////////////////////////////
+		// Quickly transforms a point with with given matrix.
+		// Resulting point is stuck in a matrix.
+		void FastTransformPoint( mat4 &destpnt, const mat4 &m1, const vec3 &srcpnt );
+
+		////////////////////////////////////////////////////////////
 		// Draws a single triangle. Performs back-face culling and
 		// flat shading.
-		void DrawFilledTri(B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, COLORREF _tricolor);
-
+		void DrawFilledTri( B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, COLORREF _tricolor );
+		
 		////////////////////////////////////////////////////////////
 		// Draws pixels on a scanline using info passed.
 		// B3DScanLineInfo contains y screen coordinate, light, texture info.
