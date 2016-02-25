@@ -3,6 +3,71 @@
 
 CRITICAL_SECTION cs;
 
+void CALLBACK NearCullCallback(PTP_CALLBACK_INSTANCE instance, void *context) { 
+	FastCullData &fcd = *((FastCullData *)context);
+	
+	// TODO: Fix this. Not able to handle camera on -z.
+	// UPDATE - 11.07.2015: Figured out distance to cam on
+	// pos z. Neg z distance might be wrong. Still need to
+	// add code to check for tris behind camera.
+
+	// Distance test. If any of the components of the triangle are too close,
+	// discard it.
+	vec3 &v1pos  = (*fcd.vm1)[3];
+	vec3 &v2pos  = (*fcd.vm2)[3];
+	vec3 &v3pos  = (*fcd.vm3)[3];
+	vec3 &campos = (*fcd.viewmatrix)[3];
+	vec3 &camat  = (*fcd.viewmatrix)[2];
+	//
+	float dist1 = gdistance( campos, v1pos );
+	float dist2 = gdistance( campos, v2pos );
+	float dist3 = gdistance( campos, v3pos );
+
+	// Discard triangle if too close.
+	if( dist1 < 0.1f || dist2 < 0.1f || dist3 < 0.1f ) {
+		fcd.result = true;
+		fcd.done = true;
+		return;
+	}
+
+	// Here, we determine if the triangle is in view.
+	// If any of the vertices are behind the camera, don't
+	// draw the triangle.
+
+	// Create vectors from triangle vertex to camera position.
+	vec3 v1vec = vec3( v1pos.x - campos.x, v1pos.y - campos.y, v1pos.z - campos.z );
+	vec3 v2vec = vec3( v2pos.x - campos.x, v2pos.y - campos.y, v2pos.z - campos.z );
+	vec3 v3vec = vec3( v3pos.x - campos.x, v3pos.y - campos.y, v3pos.z - campos.z );
+
+	// Dot camera's z(at) with these vectors.
+	// Positive value - vertex is in front of plane.
+	// Negative value - vertex is behind plane.
+	// Zero value - vertex is on plane.
+	float dotv1z = dot(v1vec, camat);
+	float dotv2z = dot(v2vec, camat);
+	float dotv3z = dot(v3vec, camat);
+
+	// Discard triangle if behind camera.
+	if( dotv1z < 0 || dotv2z < 0 || dotv3z < 0 ) {
+		fcd.result = true;
+		fcd.done = true;
+		return;
+	}
+
+	fcd.result = false;
+	fcd.done = true;
+}
+
+void CALLBACK FastTransformCallback(PTP_CALLBACK_INSTANCE instance, void *context) { 
+	FastTransformData &ftd = *((FastTransformData *)context);
+	Boop3D &bp = *ftd.bp;
+	bp.FastTransformPoint( *ftd.vm1, *ftd.filledmat, *ftd.v1 );
+	bp.FastTransformPoint( *ftd.vm2, *ftd.filledmat, *ftd.v2 );
+	bp.FastTransformPoint( *ftd.vm3, *ftd.filledmat, *ftd.v3 );
+	ftd.done = true;
+}
+
+// Calls scanline drawing member function for each scanline in triangle.
 void CALLBACK DrawLineCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
 	long value = InterlockedIncrement( &(((Boop3D *)context)->threadidx) );
 	Boop3D *bp = (Boop3D *)context;
@@ -925,11 +990,26 @@ void Boop3D::FastTransformPoint( mat4 &destpnt, const mat4 &m1, const vec3 &srcp
 // Draws a single triangle. Performs back-face culling and
 // flat shading.
 void Boop3D::DrawFilledTri( B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, COLORREF _tricolor ) {
-	
+
 	// Get transformed vert position.
-	mat4 v1mtx(0); FastTransformPoint( v1mtx, filledtrimat, tri.verts[0].xyz );
+	/*mat4 v1mtx(0); FastTransformPoint( v1mtx, filledtrimat, tri.verts[0].xyz );
 	mat4 v2mtx(0); FastTransformPoint( v2mtx, filledtrimat, tri.verts[1].xyz );
-	mat4 v3mtx(0); FastTransformPoint( v3mtx, filledtrimat, tri.verts[2].xyz );
+	mat4 v3mtx(0); FastTransformPoint( v3mtx, filledtrimat, tri.verts[2].xyz );*/
+	mat4 v1mtx(0);
+	mat4 v2mtx(0);
+	mat4 v3mtx(0);
+	ftd.bp = this;
+	ftd.done = false;
+	ftd.filledmat = &filledtrimat;
+	ftd.v1 = &tri.verts[0].xyz;
+	ftd.v2 = &tri.verts[1].xyz;
+	ftd.v3 = &tri.verts[2].xyz;
+	ftd.vm1 = &v1mtx;
+	ftd.vm2 = &v2mtx;
+	ftd.vm3 = &v3mtx;
+	TrySubmitThreadpoolCallback(FastTransformCallback, (void *)&ftd, 0);
+	while( !ftd.done ) {  }
+
 	/*mat4 v1mtx; mat4 trans1( tri.verts[0].xyz );
 	FastMat4Mult( &v1mtx, &filledtrimat, &trans1 );
 	mat4 v2mtx; mat4 trans2( tri.verts[1].xyz );
@@ -940,45 +1020,45 @@ void Boop3D::DrawFilledTri( B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, C
 	mat4 v2mtx = filledtrimat * mat4( tri.verts[1].xyz );
 	mat4 v3mtx = filledtrimat * mat4( tri.verts[2].xyz );*/
 	
+
 	///////////////////
 	// Camera Cull Test
 
-		// TODO: Fix this. Not able to handle camera on -z.
-		// UPDATE - 11.07.2015: Figured out distance to cam on
-		// pos z. Neg z distance might be wrong. Still need to
-		// add code to check for tris behind camera.
-		if(true) {
+		fastnearcull.done = false;
+		fastnearcull.result = true;
+		fastnearcull.viewmatrix = &viewmat;
+		fastnearcull.vm1 = &v1mtx;
+		fastnearcull.vm2 = &v2mtx;
+		fastnearcull.vm3 = &v3mtx;
+		TrySubmitThreadpoolCallback(NearCullCallback, (void *)&fastnearcull, 0);
+		while( !fastnearcull.done ) {  }
+		if( fastnearcull.result == true ) return;
 
-		// Distance test. If any of the components of the triangle are too close,
-		// discard it.
-		float dist1 = gdistance( viewmat[3], v1mtx[3] );
-		float dist2 = gdistance( viewmat[3], v2mtx[3] );
-		float dist3 = gdistance( viewmat[3], v3mtx[3] );
+	//vec3 &v1pos  = v1mtx[3];
+	//vec3 &v2pos  = v2mtx[3];
+	//vec3 &v3pos  = v3mtx[3];
+	//vec3 &campos = viewmat[3];
+	//vec3 &camat  = viewmat[2];
+	////
+	//float dist1 = gdistance( campos, v1pos );
+	//float dist2 = gdistance( campos, v2pos );
+	//float dist3 = gdistance( campos, v3pos );
 
-		// Discard triangle if too close.
-		if( dist1 < 0.1f || dist2 < 0.1f || dist3 < 0.1f )
-			return;
+	//// Discard triangle if too close.
+	//if( dist1 < 0.1f || dist2 < 0.1f || dist3 < 0.1f )
+	//	return;
 
-		// Here, we determine if the triangle is in view.
-		// If any of the vertices are behind the camera, don't
-		// draw the triangle.
+	//// Create vectors from triangle vertex to camera position.
+	//vec3 v1vec = vec3( v1pos.x - campos.x, v1pos.y - campos.y, v1pos.z - campos.z );
+	//vec3 v2vec = vec3( v2pos.x - campos.x, v2pos.y - campos.y, v2pos.z - campos.z );
+	//vec3 v3vec = vec3( v3pos.x - campos.x, v3pos.y - campos.y, v3pos.z - campos.z );
 
-		// Create vectors from triangle vertex to camera position.
-		vec3 v1vec = vec3( v1mtx[3].x - viewmat[3].x, v1mtx[3].y - viewmat[3].y, v1mtx[3].z - viewmat[3].z );
-		vec3 v2vec = vec3( v2mtx[3].x - viewmat[3].x, v2mtx[3].y - viewmat[3].y, v2mtx[3].z - viewmat[3].z );
-		vec3 v3vec = vec3( v3mtx[3].x - viewmat[3].x, v3mtx[3].y - viewmat[3].y, v3mtx[3].z - viewmat[3].z );
+	//float dotv1z = dot(v1vec, camat);
+	//float dotv2z = dot(v2vec, camat);
+	//float dotv3z = dot(v3vec, camat);
 
-		// Dot camera's z(at) with these vectors.
-		// Positive value - vertex is in front of plane.
-		// Negative value - vertex is behind plane.
-		// Zero value - vertex is on plane.
-		float dotv1z = dot(v1vec, viewmat[2]);
-		float dotv2z = dot(v2vec, viewmat[2]);
-		float dotv3z = dot(v3vec, viewmat[2]);
-
-		// Discard triangle if behind camera.
-		if( dotv1z < 0 || dotv2z < 0 || dotv3z < 0 )
-			return;
+	//if( dotv1z < 0 || dotv2z < 0 || dotv3z < 0 )
+	//	return;
 
 		// TODO: Add other frustum sides.
 		// Far frustum plane.
@@ -1000,11 +1080,7 @@ void Boop3D::DrawFilledTri( B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, C
 				return;
 
 		}
-		/*float dist1 = sqrt( dot(viewmat[3], v1mtx[3]) );
-		float dist2 = sqrt( dot(viewmat[3], v2mtx[3]) );
-		float dist3 = sqrt( dot(viewmat[3], v3mtx[3]) );*/
 
-	} // if false
 	// Camera Cull Test
 	///////////////////
 
@@ -1039,6 +1115,9 @@ void Boop3D::DrawFilledTri( B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, C
 
 	// Back-face Culling
 	/////////////////////
+
+	// while( !fastnearcull.done && !fastfarcull.done && !fastbackcull.done ) {  }
+	// 
 
 	////////////////
 	// Flat Shading.

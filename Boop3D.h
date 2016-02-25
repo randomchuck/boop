@@ -182,10 +182,32 @@ struct ThreadStruct {
 	Boop3D *bp;
 };
 
+// For transform thread.
+struct FastTransformData {
+	Boop3D *bp;
+	mat4 *vm1, *vm2, *vm3;
+	mat4 *filledmat;
+	vec3 *v1, *v2, *v3;
+	volatile bool done;
+};
+
+// Culling thread.
+// Frustum, backface, etc.
+struct FastCullData {
+	mat4 *viewmatrix;
+	mat4 *vm1, *vm2, *vm3;
+	bool result;
+	volatile bool done;
+};
+
 // 3D Win32 Software Renderer
 class Boop3D
 {
 	public:
+		// Passed to culling thread for access to Boop3D data.
+		FastCullData fastnearcull, fastfarcull, fastbackcull;
+		// Used with thread for quickly transforming points.
+		FastTransformData ftd;
 		// Allows each thread unique data to work with.
 		volatile long threadidx;
 		volatile long dethread;
