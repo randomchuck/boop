@@ -14,8 +14,10 @@
 			* Store potientially reusable variables.
 			* << and >> when you can.
 			* Triple-check Render() method and any methods it calls.
-			* DONE - Threads!
-			* Check [] with matrices and vectors. Switch to explicit
+			* Threads!
+			- Threaded scanline rendering. Marked improvement, but still 
+			  doesn't compare to FQUAKE Software Renderer.
+			 Check [] with matrices and vectors. Switch to explicit
 			vec3.x instead of vec3[0]. Same with mat4.
 			* Cut down on calculations.
 			- Make sure we're not doing calculations more than once.
