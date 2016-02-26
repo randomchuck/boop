@@ -196,6 +196,7 @@ struct FastTransformData {
 struct FastCullData {
 	mat4 *viewmatrix;
 	mat4 *vm1, *vm2, *vm3;
+	vec3 vt1tovt2, vt2tovt3;
 	bool result;
 	volatile bool done;
 };
@@ -211,7 +212,7 @@ class Boop3D
 		// Allows each thread unique data to work with.
 		volatile long threadidx;
 		volatile long dethread;
-		ThreadStruct ts[NUM_THREADS];
+		// ThreadStruct ts[NUM_THREADS];
 		// The window we draw to.
 		HWND windowHandle;
 		// Device and memory contexts for drawing.
