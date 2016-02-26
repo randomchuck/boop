@@ -173,16 +173,8 @@ struct B3DMesh {
 	unsigned char *texturebuffer;
 };
 
-// For-dec so ThreadStruct knows what's going on.
+// For-decl.
 class Boop3D;
-
-// Multithreading Struct. Pass a unique one to the scan line
-// drawing thread func.
-#define NUM_THREADS (1)
-struct ThreadStruct {
-	B3DScanLineInfo *sli;
-	Boop3D *bp;
-};
 
 // For transform thread.
 struct FastTransformData {
@@ -211,10 +203,6 @@ class Boop3D
 		FastCullData fastnearcull, fastfarcull, fastbackcull;
 		// Used with thread for quickly transforming points.
 		FastTransformData ftd;
-		// Allows each thread unique data to work with.
-		volatile long threadidx;
-		volatile long dethread;
-		// ThreadStruct ts[NUM_THREADS];
 		// The window we draw to.
 		HWND windowHandle;
 		// Device and memory contexts for drawing.
@@ -245,10 +233,13 @@ class Boop3D
 		int fpstimer;	    // For timing fps updates.
 		char fpsstr[10];    // Frames per second string.
 		char trirenstr[10]; // Triangles Rendered string.
+		unsigned int pixelsrendered;
+		char pixelsstr[10];
+		int pixeltimer;
 		// Dimensions of our client area that we draw to.
 		RECT clirect;
 		// Current scan line.
-		B3DScanLineInfo sli[NUM_THREADS];
+		//B3DScanLineInfo sli[NUM_THREADS];
 		// Light Info: Color, transform, ambient light.
 		// Transform can change the direction of the light.
 		// Ambient light can raise or lower the base light in the scene.
