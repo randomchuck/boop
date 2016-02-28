@@ -1,188 +1,204 @@
 #include "Boop3D.h"
 #include <stdio.h>
-#include "Random.h"
 
 
 // Multithreading Struct. Pass a unique one to the scan line
 // drawing thread func.
-#define NUM_THREADS (1)
+#define NUM_THREADS (2)
 struct ThreadStruct {
-	B3DScanLineInfo sli;
 	Boop3D *bp;
+	B3DScanLineInfo *sli;
+	int startyidx;
+	int endyidx;
+	float v1v2slope, v1v3slope;
+	float dotn1;
+	float dotn2;
+	float dotn3;
+	B3DVertex *v1, *v2, *v3;
+	B3DVertex *usv1, *usv2, *usv3;
+	mat4 *filledtrimat;
+	COLORREF clr;
+	volatile long threadidx;
+	volatile long dethread;
+	volatile bool running;
+	volatile bool newdataready;
+	volatile bool done;
 };
 ThreadStruct ts[NUM_THREADS];
-// Allows each thread unique data to work with.
-volatile long threadidx;
-volatile long dethread;
+B3DScanLineInfo globsli[NUM_THREADS];
 
-void CALLBACK BackCullCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
-	// Grab structure that we passed to our thread.
-	FastCullData &fcd = *((FastCullData *)context);
-
-	// Easy pointing. :)
-	vec3 &v1pos = (*fcd.vm1)[3];
-	vec3 &v2pos = (*fcd.vm2)[3];
-	vec3 &v3pos = (*fcd.vm3)[3];
-	vec3 &campos = (*fcd.viewmatrix)[3];
-	vec3 &camat = (*fcd.viewmatrix)[2];
-
-	// Create vector from vert1 to vert2, and one from vert2 to
-	// vert3.
-	fcd.vt1tovt2 = vec3(v2pos.x - v1pos.x, v2pos.y - v1pos.y, v2pos.z - v1pos.z);
-	fcd.vt2tovt3 = vec3(v3pos.x - v2pos.x, v3pos.y - v2pos.y, v3pos.z - v2pos.z);
-	// Cross those two vectors.
-	vec3 crx_v12_v23 = cross(fcd.vt1tovt2, fcd.vt2tovt3);
-	// Normalize the vector.
-	crx_v12_v23 = normalize(crx_v12_v23);
-
-	// Create normal from camera position to vertex.
-	vec3 camnorm = vec3(v1pos.x - campos.x, v1pos.y - campos.y, v1pos.z - campos.z);
-	// vec3 camnorm = viewmat[2];
-	camnorm = normalize(camnorm);
-
-	// Dot triangle normal with camera at.
-	float normdist = dot(crx_v12_v23, camnorm);
-
-	// Zero or higher value means the triangle is facing the camera.
-	// Negative means it is facing away from the camera. Discard.
-	if (normdist < 0) {
-		fcd.result = true;
-		fcd.done = true;
-		return;
-	}
-	fcd.result = false;
-	fcd.done = true;
-}
-
-void CALLBACK FarCullCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
-	// Grab structure that we passed to our thread.
-	FastCullData &fcd = *((FastCullData *)context);
-
-	// Easy pointing. :)
-	vec3 &v1pos = (*fcd.vm1)[3];
-	vec3 &v2pos = (*fcd.vm2)[3];
-	vec3 &v3pos = (*fcd.vm3)[3];
-	vec3 &campos = (*fcd.viewmatrix)[3];
-	vec3 &camat = (*fcd.viewmatrix)[2];
-
-	// Create vectors from far camera plane to vertices.
-	const float fardist = 100.0f;
-	vec3 farCamPos = vec3(campos.x + camat.x * fardist, campos.y + camat.y * fardist, campos.z + camat.z * fardist);
-	vec3 v1vec(v1pos.x - farCamPos.x, v1pos.y - farCamPos.y, v1pos.z - farCamPos.z);
-	vec3 v2vec(v2pos.x - farCamPos.x, v2pos.y - farCamPos.y, v2pos.z - farCamPos.z);
-	vec3 v3vec(v3pos.x - farCamPos.x, v3pos.y - farCamPos.y, v3pos.z - farCamPos.z);
-
-	// Dot with negated camera at vector. This is our far plane normal.
-	float dotv1z = dot(v1vec, camat * -1.0f);
-	float dotv2z = dot(v2vec, camat * -1.0f);
-	float dotv3z = dot(v3vec, camat * -1.0f);
-
-	// Discard triangle if past far camera plane.
-	if (dotv1z < 0 || dotv2z < 0 || dotv3z < 0) {
-		fcd.result = true;
-		fcd.done = true;
-		return;
-	}
-	fcd.result = false;
-	fcd.done = true;
-}
-
-void CALLBACK NearCullCallback(PTP_CALLBACK_INSTANCE instance, void *context) { 
-	// Grab structure that we passed to our thread.
-	FastCullData &fcd = *((FastCullData *)context);
-	
-	// TODO: Fix this. Not able to handle camera on -z.
-	// UPDATE - 11.07.2015: Figured out distance to cam on
-	// pos z. Neg z distance might be wrong. Still need to
-	// add code to check for tris behind camera.
-
-	// Distance test. If any of the components of the triangle are too close,
-	// discard it.
-	vec3 &v1pos  = (*fcd.vm1)[3];
-	vec3 &v2pos  = (*fcd.vm2)[3];
-	vec3 &v3pos  = (*fcd.vm3)[3];
-	vec3 &campos = (*fcd.viewmatrix)[3];
-	vec3 &camat  = (*fcd.viewmatrix)[2];
-	//
-	float dist1 = gdistance( campos, v1pos );
-	float dist2 = gdistance( campos, v2pos );
-	float dist3 = gdistance( campos, v3pos );
-
-	// Discard triangle if too close.
-	if( dist1 < 0.1f || dist2 < 0.1f || dist3 < 0.1f ) {
-		fcd.result = true;
-		fcd.done = true;
-		return;
-	}
-
-	// Here, we determine if the triangle is in view.
-	// If any of the vertices are behind the camera, don't
-	// draw the triangle.
-
-	// Create vectors from triangle vertex to camera position.
-	vec3 v1vec = vec3( v1pos.x - campos.x, v1pos.y - campos.y, v1pos.z - campos.z );
-	vec3 v2vec = vec3( v2pos.x - campos.x, v2pos.y - campos.y, v2pos.z - campos.z );
-	vec3 v3vec = vec3( v3pos.x - campos.x, v3pos.y - campos.y, v3pos.z - campos.z );
-
-	// Dot camera's z(at) with these vectors.
-	// Positive value - vertex is in front of plane.
-	// Negative value - vertex is behind plane.
-	// Zero value - vertex is on plane.
-	float dotv1z = dot(v1vec, camat);
-	float dotv2z = dot(v2vec, camat);
-	float dotv3z = dot(v3vec, camat);
-
-	// Discard triangle if behind camera.
-	if( dotv1z < 0 || dotv2z < 0 || dotv3z < 0 ) {
-		fcd.result = true;
-		fcd.done = true;
-		return;
-	}
-
-	fcd.result = false;
-	fcd.done = true;
-}
-
-void CALLBACK FastTransformCallback(PTP_CALLBACK_INSTANCE instance, void *context) { 
-	FastTransformData &ftd = *((FastTransformData *)context);
-	Boop3D &bp = *ftd.bp;
-	bp.FastTransformPoint( *ftd.vm1, *ftd.filledmat, *ftd.v1 );
-	bp.FastTransformPoint( *ftd.vm2, *ftd.filledmat, *ftd.v2 );
-	bp.FastTransformPoint( *ftd.vm3, *ftd.filledmat, *ftd.v3 );
-	ftd.done = true;
-}
-
-// Calls scanline drawing member function for each scanline in triangle.
-void CALLBACK DrawLineCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
-	// long value = InterlockedIncrement( &(((ThreadStruct *)context)->bp->threadidx) );
-	long value = InterlockedIncrement( &threadidx );
-	ThreadStruct &ts = ((ThreadStruct *)context)[value - 1];
+void CALLBACK DrawTriangleCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
+	/*long value = InterlockedIncrement( &(((ThreadStruct *)context)->threadidx) );*/
+	ThreadStruct &ts = *((ThreadStruct *)context);
 	Boop3D &bp = *ts.bp;
-	// long value = -1;
-//	EnterCriticalSection(&cs);
-//		value = ++(bp->threadidx);
-//	LeaveCriticalSection(&cs);
-	// printf("%s\n", ((Boop3D *)context)->fpsstr );
-	// printf("%ld, %ld\n", hival, value );
-	//printf("A - %ld\n", value );
-	/*bp->DrawTriScanLine(   bp->sli[value - 1],
-						 *(bp->sli[value - 1].v2[0]),
-						 *(bp->sli[value - 1].v2[1]),
-						 *(bp->sli[value - 1].v2[2]),
-						 *(bp->sli[value - 1].v2[3]),
-						   bp->sli[value - 1].sclr );*/
-	bp.DrawTriScanLine(   ts.sli,
-						*(ts.sli.v2[0]),
-						*(ts.sli.v2[1]),
-						*(ts.sli.v2[2]),
-						*(ts.sli.v2[3]),
-						  ts.sli.sclr );
-	long devalue = InterlockedIncrement( &dethread );
-	/*long devalue = -1;
-		EnterCriticalSection(&cs);
-		devalue = ++(bp->dethread);
-		LeaveCriticalSection(&cs);*/
-	//printf("B - %ld\n", devalue);
+
+	// This thread is always running. Only stops when Boop is Shutdown() or 
+	// goes out of scope.
+	while( ts.running ) {
+
+		// The main thread will set this when thread data is ready.
+		if( !ts.newdataready ) continue;
+
+		ts.newdataready = false;
+
+		// Draw top then bottom of triangle.
+		for( int yidx = ts.startyidx; yidx <= ts.endyidx; yidx++ ) {
+			// HACK: Fix for performance issues when object too close to camera.
+			// -100 because some tris are tall and you can see some polys
+			// disappearing.
+			if (yidx < -100 || yidx >= bp.clirect.bottom)
+				break;
+
+			(*(ts.sli)).y = yidx;
+			if (ts.v1v2slope > ts.v1v3slope) {
+				if (yidx < (*ts.v2).xyz.y) {
+					// Shading values.
+					(*(ts.sli)).dota = ts.dotn1;
+					(*(ts.sli)).dotb = ts.dotn3;
+					(*(ts.sli)).dotc = ts.dotn1;
+					(*(ts.sli)).dotd = ts.dotn2;
+					// Texture coordinate values.
+					(*(ts.sli)).ua = (*ts.v1).uv.x;
+					(*(ts.sli)).ub = (*ts.v3).uv.x;
+					(*(ts.sli)).uc = (*ts.v1).uv.x;
+					(*(ts.sli)).ud = (*ts.v2).uv.x;
+					(*(ts.sli)).va = (*ts.v1).uv.y;
+					(*(ts.sli)).vb = (*ts.v3).uv.y;
+					(*(ts.sli)).vc = (*ts.v1).uv.y;
+					(*(ts.sli)).vd = (*ts.v2).uv.y;
+					// Vertices.
+					(*(ts.sli)).v[0] = ts.usv1;
+					(*(ts.sli)).v[1] = ts.usv3;
+					(*(ts.sli)).v[2] = ts.usv1;
+					(*(ts.sli)).v[3] = ts.usv2;
+					//
+					(*(ts.sli)).v2[0] = ts.v1;
+					(*(ts.sli)).v2[1] = ts.v3;
+					(*(ts.sli)).v2[2] = ts.v1;
+					(*(ts.sli)).v2[3] = ts.v2;
+					//
+					// Point to transform for mesh.
+					(*(ts.sli)).m = ts.filledtrimat;
+					//
+					(*(ts.sli)).sclr = ts.clr;
+					//
+					bp.DrawTriScanLine(*ts.sli, *ts.v1, *ts.v3, *ts.v1, *ts.v2, ts.clr); // Top.
+					//cursli++;
+					//TrySubmitThreadpoolCallback(DrawLineCallback, (void *)ts, 0);
+				}
+				else {
+					// Shading values.
+					(*(ts.sli)).dota = ts.dotn1;
+					(*(ts.sli)).dotb = ts.dotn3;
+					(*(ts.sli)).dotc = ts.dotn2;
+					(*(ts.sli)).dotd = ts.dotn3;
+					// Texture coordinate values.
+					(*(ts.sli)).ua = (*ts.v1).uv.x;
+					(*(ts.sli)).ub = (*ts.v3).uv.x;
+					(*(ts.sli)).uc = (*ts.v2).uv.x;
+					(*(ts.sli)).ud = (*ts.v3).uv.x;
+					(*(ts.sli)).va = (*ts.v1).uv.y;
+					(*(ts.sli)).vb = (*ts.v3).uv.y;
+					(*(ts.sli)).vc = (*ts.v2).uv.y;
+					(*(ts.sli)).vd = (*ts.v3).uv.y;
+					// Vertices.
+					(*(ts.sli)).v[0] = ts.usv1;
+					(*(ts.sli)).v[1] = ts.usv3;
+					(*(ts.sli)).v[2] = ts.usv2;
+					(*(ts.sli)).v[3] = ts.usv3;
+					//
+					(*(ts.sli)).v2[0] = ts.v1;
+					(*(ts.sli)).v2[1] = ts.v3;
+					(*(ts.sli)).v2[2] = ts.v2;
+					(*(ts.sli)).v2[3] = ts.v3;
+					// Point to transform for mesh.
+					(*(ts.sli)).m = ts.filledtrimat;
+					//
+					(*(ts.sli)).sclr = ts.clr;
+					//
+					bp.DrawTriScanLine(*ts.sli,  *ts.v1,  *ts.v3,  *ts.v2,  *ts.v3, ts.clr); // Bottom.
+					//cursli++;
+					//TrySubmitThreadpoolCallback(DrawLineCallback, (void *)ts, 0);
+				}
+			} // if( v1v2slope...
+			else {
+				if (yidx < (*ts.v2).xyz.y) {
+					// Shading values.
+					(*(ts.sli)).dota = ts.dotn1;
+					(*(ts.sli)).dotb = ts.dotn2;
+					(*(ts.sli)).dotc = ts.dotn1;
+					(*(ts.sli)).dotd = ts.dotn3;
+					// Texture coordinate values.
+					(*(ts.sli)).ua = (*ts.v1).uv.x;
+					(*(ts.sli)).ub = (*ts.v2).uv.x;
+					(*(ts.sli)).uc = (*ts.v1).uv.x;
+					(*(ts.sli)).ud = (*ts.v3).uv.x;
+					(*(ts.sli)).va = (*ts.v1).uv.y;
+					(*(ts.sli)).vb = (*ts.v2).uv.y;
+					(*(ts.sli)).vc = (*ts.v1).uv.y;
+					(*(ts.sli)).vd = (*ts.v3).uv.y;
+					// Vertices.
+					(*(ts.sli)).v[0] = ts.usv1;
+					(*(ts.sli)).v[1] = ts.usv2;
+					(*(ts.sli)).v[2] = ts.usv1;
+					(*(ts.sli)).v[3] = ts.usv3;
+					//
+					(*(ts.sli)).v2[0] = ts.v1;
+					(*(ts.sli)).v2[1] = ts.v2;
+					(*(ts.sli)).v2[2] = ts.v1;
+					(*(ts.sli)).v2[3] = ts.v3;
+					// Point to transform for mesh.
+					(*(ts.sli)).m = ts.filledtrimat;
+					//
+					(*(ts.sli)).sclr = ts.clr;
+					//
+					bp.DrawTriScanLine(*ts.sli, *ts.v1, *ts.v2, *ts.v1, *ts.v3, ts.clr); // Top.
+					//cursli++;
+					//TrySubmitThreadpoolCallback(DrawLineCallback, (void *)ts, 0);
+				}
+				else {
+					// Shading values.
+					(*(ts.sli)).dota = ts.dotn2;
+					(*(ts.sli)).dotb = ts.dotn3;
+					(*(ts.sli)).dotc = ts.dotn1;
+					(*(ts.sli)).dotd = ts.dotn3;
+					// Texture coordinate values.
+					(*(ts.sli)).ua = (*ts.v2).uv.x;
+					(*(ts.sli)).ub = (*ts.v3).uv.x;
+					(*(ts.sli)).uc = (*ts.v1).uv.x;
+					(*(ts.sli)).ud = (*ts.v3).uv.x;
+					(*(ts.sli)).va = (*ts.v2).uv.y;
+					(*(ts.sli)).vb = (*ts.v3).uv.y;
+					(*(ts.sli)).vc = (*ts.v1).uv.y;
+					(*(ts.sli)).vd = (*ts.v3).uv.y;
+					// Vertices.
+					(*(ts.sli)).v[0] = ts.usv2;
+					(*(ts.sli)).v[1] = ts.usv3;
+					(*(ts.sli)).v[2] = ts.usv1;
+					(*(ts.sli)).v[3] = ts.usv3;
+					//
+					(*(ts.sli)).v2[0] = ts.v2;
+					(*(ts.sli)).v2[1] = ts.v3;
+					(*(ts.sli)).v2[2] = ts.v1;
+					(*(ts.sli)).v2[3] = ts.v3;
+					// Point to transform for mesh.
+					(*(ts.sli)).m = ts.filledtrimat;
+					//
+					(*(ts.sli)).sclr = ts.clr;
+					//
+					bp.DrawTriScanLine(*ts.sli, *ts.v2, *ts.v3, *ts.v1, *ts.v3, ts.clr); // Bottom.
+					//cursli++;
+					//TrySubmitThreadpoolCallback(DrawLineCallback, (void *)ts, 0);
+				}
+			}
+
+		} // for(int yidx...
+
+		// The thread is done processing, and is awaiting new data.
+		ts.done = true;
+
+	} // while( ts.running )
+	long devalue = InterlockedIncrement(&ts.dethread);
 }
 
 ////////////////////////////////////////////////////////////
@@ -238,28 +254,14 @@ void Boop3D::Initialize(HWND _winHandle) {
 							   (void **)&bmbuffer,
 							   0,
 							   0 );
-	// This commented bit just for info. Not used since we're specifying
-	// 32bit color depth. This part figures out how many bytes are
-	// left after the last pixel of the row's byte.
-	/*RowMult = 4 - (((bitmapInfo.bmiHeader.biBitCount * bitmapInfo.bmiHeader.biWidth) / 8) % 4);
-	if ( RowMult == 4 )
-		RowMult = 0;
-	RowMult += (bitmapInfo.bmiHeader.biBitCount * bitmapInfo.bmiHeader.biWidth / 8);*/
 
 	// Use this instead of default.
 	hOld = SelectObject(hdcMem, hbmMem);
 
 	// Calculate projection and view matrices.
 	projmat = perspective(45.0f, (float)clirect.right / (float)clirect.bottom, 0.01f, 100.0f);
-	// 3 Batmans
-	// viewmat = lookat( vec3(0, 2, 1.0f), vec3(0, 1.25f, -2), vec3(0, 1, 0) );
+	// Camera.
 	CameraLookat( vec3(0, 2, 1.0f), vec3(0, 1.25f, -2), vec3(0, 1, 0) );
-	// CameraLookat( vec3(0, 2, 0.5f), vec3(0, 1.25f, -2), vec3(0, 1, 0) );
-	// Closeup on the one batman.
-	// viewmat = lookat( vec3(0, 4, 0.2f), vec3(0, 4, 0), vec3(0, 1, 0) );
-	// CameraLookat( vec3(0, 4, 0.2f), vec3(0, 4, 0), vec3(0, 1, 0) );
-	// Boxes, planes, road tile, etc.
-	// viewmat = lookat( vec3(0, 2.75, 1.75f), vec3(0, 1.25f, 0), vec3(0, 1, 0) );
 
 	// Set up z buffeclirect.
 	zbuffer = new float[clirect.right * clirect.bottom];
@@ -276,13 +278,6 @@ void Boop3D::Initialize(HWND _winHandle) {
 	// Clear screen and zbuffer.
 	Clear();
 
-	// Start the thread index at the beginning.
-	threadidx = 0;
-	dethread = 0;
-
-	// Seed rng.
-	randomize();
-
 } // Initialize()
 
 ////////////////////////////////////////////////////////////
@@ -290,9 +285,13 @@ void Boop3D::Initialize(HWND _winHandle) {
 // Shouldn't need to call explicitly, as it's invoked from
 // our destructor. Just let Boop go out of scope.
 void Boop3D::Shutdown(void) {
+	// Make sure threads aren't running.
+	for( int t = 0; t < NUM_THREADS; t++ )
+		ts[t].running = false;
 	// Not Init()'d so nothing to do.
 	if(windowHandle == 0)
 		return;
+	// Delete pens, dc's, etc.
 	SelectObject(hdcMem, hOld);
 	DeleteObject(hbmMem);
 	DeleteDC    (hdcMem);
@@ -301,6 +300,7 @@ void Boop3D::Shutdown(void) {
 	DeleteObject(hBluePen);
 	DeleteObject(hGreenPen);
 	DeleteObject(hRedPen);
+	// Get rid of meshes and textures.
 	for(int midx = 0; midx < (int)meshlist.size(); midx++) {
 		meshlist[midx].tris.clear();
 		// Sometimes textures won't be loaded.
@@ -564,11 +564,6 @@ void Boop3D::Render(void) {
 	// Clear screen and depth buffer.
 	Clear();
 
-	// TODO: Remove.
-	// Rotate the meshes.
-	static float rot = 1;
-	// rot += 0.1f;
-
 	// Draw every mesh.
 	for(unsigned int midx = 0; midx < meshlist.size(); midx++) {
 
@@ -582,13 +577,6 @@ void Boop3D::Render(void) {
 		else
 			SelectObject(hdcMem, hRedPen);
 
-		// Rotate and scale this mesh's matrix.
-		/*mat4 rotamtx = rotate( rot, vec3(0, 1, 0) );
-		mat4 scalemtx = scale( vec3(1.0f, 1.0f, 1.0f) );*/
-//		meshlist[midx].matrix = mat4( meshlist[midx].matrix[3] ) *
-//								rotamtx *
-//								scalemtx;
-		// meshlist[midx].matrix *= rotamtx;
 		// Point to current mesh.
 		curMesh = &meshlist[midx];
 		// Finally draw it.
@@ -671,26 +659,6 @@ void Boop3D::Blit( void ) {
 // Faster than vanilla mat4 *operator.
 void Boop3D::FastMat4Mult( mat4 *dest, const mat4 *m1, const mat4 *m2 ) {
 
-	/*float wun = m1->columns[0].x;
-	float too = m2->columns[0].x;
-	float res = 0.0f;*/
-	/*__asm {
-	__asm mov eax, wun
-	__asm mov ecx, too
-	__asm mul ecx
-	__asm mov res, 1234
-	}*/
-
-	/*float asdf = m1->columns[0].x * m2->columns[0].x;
-	float asdf2 = 0.0f;
-	__asm {
-		mov  eax, dword ptr [m1]
-		fld		  dword ptr [eax]
-		mov  ecx, dword ptr [m2]
-		fmul	  dword ptr [ecx]
-		fstp	  dword ptr [asdf2]
-	}*/
-
 	float m10x = m1->columns[0].x;
 	float m10y = m1->columns[0].y;
 	float m10z = m1->columns[0].z;
@@ -750,303 +718,7 @@ void Boop3D::FastMat4Mult( mat4 *dest, const mat4 *m1, const mat4 *m2 ) {
 	dest->columns[3].y = m10y * m23x + m11y * m23y + m12y * m23z + m13y * m23w;
 	dest->columns[3].z = m10z * m23x + m11z * m23y + m12z * m23z + m13z * m23w;
 	dest->columns[3].w = m10w * m23x + m11w * m23y + m12w * m23z + m13w * m23w;
-	//////////////////////////////
-	//dest->columns[0].x = m10x * m20x + m11x * m20y + m12x * m20z + m13x * m20w;
-	//dest->columns[1].x = m10x * m21x + m11x * m21y + m12x * m21z + m13x * m21w;
-	//dest->columns[2].x = m10x * m22x + m11x * m22y + m12x * m22z + m13x * m22w;
-	//dest->columns[3].x = m10x * m23x + m11x * m23y + m12x * m23z + m13x * m23w;
-	///////
-	//dest->columns[0].y = m10y * m20x + m11y * m20y + m12y * m20z + m13y * m20w;
-	//dest->columns[1].y = m10y * m21x + m11y * m21y + m12y * m21z + m13y * m21w;
-	//dest->columns[2].y = m10y * m22x + m11y * m22y + m12y * m22z + m13y * m22w;
-	//dest->columns[3].y = m10y * m23x + m11y * m23y + m12y * m23z + m13y * m23w;
-	///////
-	//dest->columns[0].z = m10z * m20x + m11z * m20y + m12z * m20z + m13z * m20w;
-	//dest->columns[1].z = m10z * m21x + m11z * m21y + m12z * m21z + m13z * m21w;
-	//dest->columns[2].z = m10z * m22x + m11z * m22y + m12z * m22z + m13z * m22w;
-	//dest->columns[3].z = m10z * m23x + m11z * m23y + m12z * m23z + m13z * m23w;
-	///////
-	//dest->columns[0].w = m10w * m20x + m11w * m20y + m12w * m20z + m13w * m20w;
-	//dest->columns[1].w = m10w * m21x + m11w * m21y + m12w * m21z + m13w * m21w;
-	//dest->columns[2].w = m10w * m22x + m11w * m22y + m12w * m22z + m13w * m22w;
-	//dest->columns[3].w = m10w * m23x + m11w * m23y + m12w * m23z + m13w * m23w;
-	/*dest->columns[0].x = m1->columns[0].x * m2->columns[0].x + 
-						 m1->columns[1].x * m2->columns[0].y + 
-						 m1->columns[2].x * m2->columns[0].z + 
-						 m1->columns[3].x * m2->columns[0].w;
-	dest->columns[1].x = m1->columns[0].x * m2->columns[1].x + 
-						 m1->columns[1].x * m2->columns[1].y + 
-						 m1->columns[2].x * m2->columns[1].z + 
-						 m1->columns[3].x * m2->columns[1].w;
-	dest->columns[2].x = m1->columns[0].x * m2->columns[2].x + 
-						 m1->columns[1].x * m2->columns[2].y + 
-						 m1->columns[2].x * m2->columns[2].z + 
-						 m1->columns[3].x * m2->columns[2].w;
-	dest->columns[3].x = m1->columns[0].x * m2->columns[3].x + 
-						 m1->columns[1].x * m2->columns[3].y + 
-						 m1->columns[2].x * m2->columns[3].z + 
-						 m1->columns[3].x * m2->columns[3].w;
-	dest->columns[0].y = m1->columns[0].y * m2->columns[0].x + 
-						 m1->columns[1].y * m2->columns[0].y + 
-						 m1->columns[2].y * m2->columns[0].z + 
-						 m1->columns[3].y * m2->columns[0].w;
-	dest->columns[1].y = m1->columns[0].y * m2->columns[1].x + 
-						 m1->columns[1].y * m2->columns[1].y + 
-						 m1->columns[2].y * m2->columns[1].z + 
-						 m1->columns[3].y * m2->columns[1].w;
-	dest->columns[2].y = m1->columns[0].y * m2->columns[2].x + 
-						 m1->columns[1].y * m2->columns[2].y + 
-						 m1->columns[2].y * m2->columns[2].z + 
-						 m1->columns[3].y * m2->columns[2].w;
-	dest->columns[3].y = m1->columns[0].y * m2->columns[3].x + 
-						 m1->columns[1].y * m2->columns[3].y + 
-						 m1->columns[2].y * m2->columns[3].z + 
-						 m1->columns[3].y * m2->columns[3].w;
-	dest->columns[0].z = m1->columns[0].z * m2->columns[0].x + 
-						 m1->columns[1].z * m2->columns[0].y + 
-						 m1->columns[2].z * m2->columns[0].z + 
-						 m1->columns[3].z * m2->columns[0].w;
-	dest->columns[1].z = m1->columns[0].z * m2->columns[1].x + 
-						 m1->columns[1].z * m2->columns[1].y + 
-						 m1->columns[2].z * m2->columns[1].z + 
-						 m1->columns[3].z * m2->columns[1].w;
-	dest->columns[2].z = m1->columns[0].z * m2->columns[2].x + 
-						 m1->columns[1].z * m2->columns[2].y + 
-						 m1->columns[2].z * m2->columns[2].z + 
-						 m1->columns[3].z * m2->columns[2].w;
-	dest->columns[3].z = m1->columns[0].z * m2->columns[3].x + 
-						 m1->columns[1].z * m2->columns[3].y + 
-						 m1->columns[2].z * m2->columns[3].z + 
-						 m1->columns[3].z * m2->columns[3].w;
-	dest->columns[0].w = m1->columns[0].w * m2->columns[0].x + 
-						 m1->columns[1].w * m2->columns[0].y + 
-						 m1->columns[2].w * m2->columns[0].z + 
-						 m1->columns[3].w * m2->columns[0].w;
-	dest->columns[1].w = m1->columns[0].w * m2->columns[1].x + 
-						 m1->columns[1].w * m2->columns[1].y + 
-						 m1->columns[2].w * m2->columns[1].z + 
-						 m1->columns[3].w * m2->columns[1].w;
-	dest->columns[2].w = m1->columns[0].w * m2->columns[2].x + 
-						 m1->columns[1].w * m2->columns[2].y + 
-						 m1->columns[2].w * m2->columns[2].z + 
-						 m1->columns[3].w * m2->columns[2].w;
-	dest->columns[3].w = m1->columns[0].w * m2->columns[3].x + 
-						 m1->columns[1].w * m2->columns[3].y + 
-						 m1->columns[2].w * m2->columns[3].z + 
-						 m1->columns[3].w * m2->columns[3].w;*/
-
-	//float f1 = m1->columns[0].x;
-	//float f2 = m2->columns[0].x;
-	//float res1, res2, res3, res4;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].x;
-	//f2 = m2->columns[0].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].x;
-	//f2 = m2->columns[0].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].x;
-	//f2 = m2->columns[0].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[0].x = res1 + res2 + res3 + res4;
-	//f1 = m1->columns[0].x;
-	//f2 = m2->columns[1].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].x;
-	//f2 = m2->columns[1].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].x;
-	//f2 = m2->columns[1].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].x;
-	//f2 = m2->columns[1].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[1].x = res1 + res2 + res3 + res4;
-	//f1 = m1->columns[0].x;
-	//f2 = m2->columns[2].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].x;
-	//f2 = m2->columns[2].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].x;
-	//f2 = m2->columns[2].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].x;
-	//f2 = m2->columns[2].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[2].x = res1 + res2 + res3 + res4;
-	//f1 = m1->columns[0].x;
-	//f2 = m2->columns[3].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].x;
-	//f2 = m2->columns[3].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].x;
-	//f2 = m2->columns[3].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].x;
-	//f2 = m2->columns[3].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[3].x = res1 + res2 + res3 + res4;
-	//// 
-	//f1 = m1->columns[0].y;
-	//f2 = m2->columns[0].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].y;
-	//f2 = m2->columns[0].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].y;
-	//f2 = m2->columns[0].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].y;
-	//f2 = m2->columns[0].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[0].y = res1 + res2 + res3 + res4;
-	//f1 = m1->columns[0].y;
-	//f2 = m2->columns[1].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].y;
-	//f2 = m2->columns[1].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].y;
-	//f2 = m2->columns[1].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].y;
-	//f2 = m2->columns[1].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[1].y = res1 + res2 + res3 + res4;
-	//f1 = m1->columns[0].y;
-	//f2 = m2->columns[2].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].y;
-	//f2 = m2->columns[2].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].y;
-	//f2 = m2->columns[2].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].y;
-	//f2 = m2->columns[2].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[2].y = res1 + res2 + res3 + res4;
-	//f1 = m1->columns[0].y;
-	//f2 = m2->columns[3].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].y;
-	//f2 = m2->columns[3].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].y;
-	//f2 = m2->columns[3].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].y;
-	//f2 = m2->columns[3].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[3].y = res1 + res2 + res3 + res4;
-	//// 
-	//f1 = m1->columns[0].z;
-	//f2 = m2->columns[0].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].z;
-	//f2 = m2->columns[0].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].z;
-	//f2 = m2->columns[0].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].z;
-	//f2 = m2->columns[0].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[0].z = res1 + res2 + res3 + res4;
-	//f1 = m1->columns[0].z;
-	//f2 = m2->columns[1].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].z;
-	//f2 = m2->columns[1].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].z;
-	//f2 = m2->columns[1].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].z;
-	//f2 = m2->columns[1].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[1].z = res1 + res2 + res3 + res4;
-	//f1 = m1->columns[0].z;
-	//f2 = m2->columns[2].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].z;
-	//f2 = m2->columns[2].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].z;
-	//f2 = m2->columns[2].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].z;
-	//f2 = m2->columns[2].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[2].z = res1 + res2 + res3 + res4;
-	//f1 = m1->columns[0].z;
-	//f2 = m2->columns[3].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].z;
-	//f2 = m2->columns[3].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].z;
-	//f2 = m2->columns[3].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].z;
-	//f2 = m2->columns[3].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[3].z = res1 + res2 + res3 + res4;
-	//// 
-	//f1 = m1->columns[0].w;
-	//f2 = m2->columns[0].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].w;
-	//f2 = m2->columns[0].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].w;
-	//f2 = m2->columns[0].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].w;
-	//f2 = m2->columns[0].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[0].w = res1 + res2 + res3 + res4;
-	//f1 = m1->columns[0].w;
-	//f2 = m2->columns[1].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].w;
-	//f2 = m2->columns[1].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].w;
-	//f2 = m2->columns[1].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].w;
-	//f2 = m2->columns[1].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[1].w = res1 + res2 + res3 + res4;
-	//f1 = m1->columns[0].w;
-	//f2 = m2->columns[2].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].w;
-	//f2 = m2->columns[2].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].w;
-	//f2 = m2->columns[2].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].w;
-	//f2 = m2->columns[2].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[2].w = res1 + res2 + res3 + res4;
-	//f1 = m1->columns[0].w;
-	//f2 = m2->columns[3].x;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
-	//f1 = m1->columns[1].w;
-	//f2 = m2->columns[3].y;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
-	//f1 = m1->columns[2].w;
-	//f2 = m2->columns[3].z;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
-	//f1 = m1->columns[3].w;
-	//f2 = m2->columns[3].w;
-	//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
-	//dest->columns[3].w = res1 + res2 + res3 + res4;
+	
 }
 
 ////////////////////////////////////////////////////////////
@@ -1125,57 +797,7 @@ void Boop3D::DrawFilledTri( B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, C
 	mat4 v2mtx = filledtrimat * mat4( tri.verts[1].xyz );
 	mat4 v3mtx = filledtrimat * mat4( tri.verts[2].xyz );
 	
-	//if (false) {
-	/////////////////////
-	//// Camera Cull Test
-
-	//	// Near camera culling.
-	//	fastnearcull.done = false;
-	//	fastnearcull.result = true;
-	//	fastnearcull.viewmatrix = &viewmat;
-	//	fastnearcull.vm1 = &v1mtx;
-	//	fastnearcull.vm2 = &v2mtx;
-	//	fastnearcull.vm3 = &v3mtx;
-	//	TrySubmitThreadpoolCallback(NearCullCallback, (void *)&fastnearcull, 0);
-
-	//	// Far camera culling.
-	//	fastfarcull.done = false;
-	//	fastfarcull.result = true;
-	//	fastfarcull.viewmatrix = &viewmat;
-	//	fastfarcull.vm1 = &v1mtx;
-	//	fastfarcull.vm2 = &v2mtx;
-	//	fastfarcull.vm3 = &v3mtx;
-	//	TrySubmitThreadpoolCallback(FarCullCallback, (void *)&fastfarcull, 0);
-	//	
-
-	//// Camera Cull Test
-	/////////////////////
-
-	///////////////////////
-	//// Back-face Culling
-
-	//	// With back-face culling, we could potentially
-	//	// remove half of the triangles to be rasterized
-	//	// on closed objects.
-
-	//	// Far camera culling.
-	//	fastbackcull.done = false;
-	//	fastbackcull.result = true;
-	//	fastbackcull.viewmatrix = &viewmat;
-	//	fastbackcull.vm1 = &v1mtx;
-	//	fastbackcull.vm2 = &v2mtx;
-	//	fastbackcull.vm3 = &v3mtx;
-	//	TrySubmitThreadpoolCallback(BackCullCallback, (void *)&fastbackcull, 0);
-
-	//	// Wait for culling to finish, then skip this triangle if needed.
-	//	while (!fastnearcull.done || !fastfarcull.done || !fastbackcull.done) {}
-	//	if (fastnearcull.result == true) return;
-	//	if (fastfarcull.result == true) return;
-	//	if (fastbackcull.result == true) return;
-
-	//// Back-face Culling
-	///////////////////////
-	//}
+	
 		///////////////////
 		// Camera Cull Test
 
@@ -1281,7 +903,7 @@ void Boop3D::DrawFilledTri( B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, C
 	// Store triangle in a copy so we aren't modifying
 	// the original.
 	// B3DTriangle copytri = tri;
-	// This is a few frames faster.
+	// This is a few frames faster. Test again.
 	B3DTriangle copytri;
 	for( int v = 0; v < 3; v++ ) {
 		copytri.verts[v].xyz.x = tri.verts[v].xyz.x;
@@ -1317,22 +939,6 @@ void Boop3D::DrawFilledTri( B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, C
 			}
 		}
 	}
-
-	// If triangle is outside of bounds of screen,
-	// don't bother drawing it.
-	//bool drawTri = true;
-	//for(int ct = 0; ct < 3; ct++) {
-	//	if(copytri.verts[ct].xyz.x < 0 || copytri.verts[ct].xyz.x >= clirect.right ||
-	//	   copytri.verts[ct].xyz.y < 0 || copytri.verts[ct].xyz.y >= clirect.bottom) {
-	//		drawTri = false;
-	//		break;
-	//	}
-	//}
-
-	//// If just ONE of the vertices was outside of the screen, don't
-	//// draw the entire triangle.
-	//if(drawTri == false)
-	//	return;
 
 	// Get dot between vertex normals and light direction.
 	vec3 invnrm1 = copytri.verts[0].nrm;
@@ -1391,12 +997,93 @@ void Boop3D::DrawFilledTri( B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, C
 		v1v3slope = (v3.xyz.x - v1.xyz.x) / (v3.xyz.y - v1.xyz.y);
 	else
 		v1v3slope = 0;
+	
+	for( int t = 0; t < NUM_THREADS; t++ ) {
+		ts[t].bp = this;
+		ts[t].sli = &globsli[t];
+		ts[t].startyidx = (int)v1.xyz.y;
+		ts[t].endyidx = (int)v3.xyz.y;
+		ts[t].clr = _tricolor;
+		ts[t].dotn1 = dotn1;
+		ts[t].dotn2 = dotn2;
+		ts[t].dotn3 = dotn3;
+		ts[t].filledtrimat = &filledtrimat;
+		ts[t].threadidx = 0;
+		ts[t].dethread = 0;
+		ts[t].v1 = &v1;
+		ts[t].v2 = &v2;
+		ts[t].v3 = &v3;
+		ts[t].usv1 = &tri.verts[0];
+		ts[t].usv2 = &tri.verts[1];
+		ts[t].usv3 = &tri.verts[2];
+		ts[t].v1v2slope = v1v2slope;
+		ts[t].v1v3slope = v1v3slope;
+		ts[t].running = true;
+		ts[t].newdataready = false;
+		ts[t].done = false;
+	}
+	//int linesperthread = (int)v3.xyz.y / 4;
+	//ts[0].startyidx = (int)v1.xyz.y;
+	//ts[0].endyidx = ts[0].startyidx + linesperthread;
+	////
+	//ts[1].startyidx = ts[0].endyidx;
+	//ts[1].endyidx = ts[1].startyidx + linesperthread;
+	////
+	//ts[2].startyidx = ts[1].endyidx;
+	//ts[2].endyidx = ts[2].startyidx + linesperthread;
+	////
+	//ts[3].startyidx = ts[2].endyidx;
+	//ts[3].endyidx = (int)v3.xyz.y;
 
-	int cursli = 0;
-	// Start the thread index at the beginning.
-	threadidx = 0;
-	dethread = 0;
+	int linesperthread = (int)v3.xyz.y / 2;
+	ts[0].startyidx = (int)v1.xyz.y;
+	ts[0].endyidx = ts[0].startyidx + linesperthread;
+	ts[1].startyidx = ts[0].endyidx + 1;
+	ts[1].endyidx = (int)v3.xyz.y;
+	
+	
+	/*static bool doonce = true;
+	if( doonce ) {
+		doonce = false;
+		for( int nt = 0; nt < NUM_THREADS; nt++ )
+			TrySubmitThreadpoolCallback(DrawTriangleCallback, (void *)&ts[nt], 0);
+	}
 
+	for( int thr = 0; thr < NUM_THREADS; thr++ )
+		ts[thr].newdataready = true;
+
+	while ( true ) {
+		bool threadsrunning = false;
+		for( int nt = 0; nt < NUM_THREADS; nt++ ) {
+			if( ts[nt].done == false ) {
+				threadsrunning = true;
+				break;
+			}
+		}
+		if( !threadsrunning ) break;
+	}*/
+	
+	
+	// while( ts[0].done == false || ts[1].done == false || ts[2].done == false || ts[3].done == false ) {}
+	// while( ts[0].done == false || ts[1].done == false ) {  }
+	// while( ts[0].done == false ) {}
+
+	/*for( int nt = 0; nt < NUM_THREADS; nt++ )
+		TrySubmitThreadpoolCallback(DrawTriangleCallback, (void *)&ts[nt], 0);
+	while ( true ) {
+		bool threadsrunning = false;
+		for( int nt = 0; nt < NUM_THREADS; nt++ ) {
+			if( ts[nt].dethread == 0 ) {
+				threadsrunning = true;
+				break;
+			}
+		}
+		if( !threadsrunning ) break;
+	}*/
+			
+
+	#ifndef poop
+	B3DScanLineInfo &sli = globsli[0];
 	// Draw top then bottom of triangle.
 	for( int yidx = (int)v1.xyz.y; yidx <= (int)v3.xyz.y; yidx++ ) {
 		// HACK: Fix for performance issues when object too close to camera.
@@ -1404,100 +1091,75 @@ void Boop3D::DrawFilledTri( B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, C
 		// disappearing.
 		if(yidx < -100 || yidx >= clirect.bottom)
 			break;
-
-		// We only have so many threads.
-		//if( cursli >= NUM_THREADS ) {
-		//	cursli = 0;
-		//	// CreateThread(0, 0, DrawLineThread, this, 0, NULL);
-		//	// static DWORD WINAPI DrawLineThread(void *param) { return 0; }
-
-		//	for( int i = 0; i < NUM_THREADS; i++ )
-		//		TrySubmitThreadpoolCallback(DrawLineCallback, this, 0);
-		//	while( dethread < NUM_THREADS ) {}
-
-		//	// Start the thread index at the beginning.
-		//	threadidx = 0;
-		//	dethread = 0;
-		//}
-
 		
-		/*if( cursli >= NUM_THREADS ) {
-			while ( dethread < NUM_THREADS ) {  }
-			threadidx = 0;
-			dethread = 0;
-			cursli = 0;
-		}*/
-
-		// sli[cursli].y = yidx;
-		ts[cursli].bp = this;
-		ts[cursli].sli.y = yidx;
+		sli.y = yidx;
 		if( v1v2slope > v1v3slope ) {
 			if( yidx < v2.xyz.y ) {
 				// Shading values.
-				ts[cursli].sli.dota = dotn1;
-				ts[cursli].sli.dotb = dotn3;
-				ts[cursli].sli.dotc = dotn1;
-				ts[cursli].sli.dotd = dotn2;
+				sli.dota = dotn1;
+				sli.dotb = dotn3;
+				sli.dotc = dotn1;
+				sli.dotd = dotn2;
 				// Texture coordinate values.
-				ts[cursli].sli.ua = v1.uv.x;
-				ts[cursli].sli.ub = v3.uv.x;
-				ts[cursli].sli.uc = v1.uv.x;
-				ts[cursli].sli.ud = v2.uv.x;
-				ts[cursli].sli.va = v1.uv.y;
-				ts[cursli].sli.vb = v3.uv.y;
-				ts[cursli].sli.vc = v1.uv.y;
-				ts[cursli].sli.vd = v2.uv.y;
+				sli.ua = v1.uv.x;
+				sli.ub = v3.uv.x;
+				sli.uc = v1.uv.x;
+				sli.ud = v2.uv.x;
+				sli.va = v1.uv.y;
+				sli.vb = v3.uv.y;
+				sli.vc = v1.uv.y;
+				sli.vd = v2.uv.y;
 				// Vertices.
-				ts[cursli].sli.v[0] = &tri.verts[0];
-				ts[cursli].sli.v[1] = &tri.verts[2];
-				ts[cursli].sli.v[2] = &tri.verts[0];
-				ts[cursli].sli.v[3] = &tri.verts[1];
+				sli.v[0] = &tri.verts[0];
+				sli.v[1] = &tri.verts[2];
+				sli.v[2] = &tri.verts[0];
+				sli.v[3] = &tri.verts[1];
 				//
-				ts[cursli].sli.v2[0] = &v1;
-				ts[cursli].sli.v2[1] = &v3;
-				ts[cursli].sli.v2[2] = &v1;
-				ts[cursli].sli.v2[3] = &v2;
+				sli.v2[0] = &v1;
+				sli.v2[1] = &v3;
+				sli.v2[2] = &v1;
+				sli.v2[3] = &v2;
 				//
 				// Point to transform for mesh.
-				ts[cursli].sli.m = &filledtrimat;
+				sli.m = &filledtrimat;
 				//
-				ts[cursli].sli.sclr = _tricolor;
+				sli.sclr = _tricolor;
 				//
-				DrawTriScanLine(ts[cursli].sli, v1, v3, v1, v2, _tricolor); // Top.
+				DrawTriScanLine(sli, v1, v3, v1, v2, _tricolor); // Top.
 				//cursli++;
 				//TrySubmitThreadpoolCallback(DrawLineCallback, (void *)ts, 0);
 			}
 			else {
 				// Shading values.
-				ts[cursli].sli.dota = dotn1;
-				ts[cursli].sli.dotb = dotn3;
-				ts[cursli].sli.dotc = dotn2;
-				ts[cursli].sli.dotd = dotn3;
+				sli.dota = dotn1;
+				sli.dotb = dotn3;
+				sli.dotc = dotn2;
+				sli.dotd = dotn3;
 				// Texture coordinate values.
-				ts[cursli].sli.ua = v1.uv.x;
-				ts[cursli].sli.ub = v3.uv.x;
-				ts[cursli].sli.uc = v2.uv.x;
-				ts[cursli].sli.ud = v3.uv.x;
-				ts[cursli].sli.va = v1.uv.y;
-				ts[cursli].sli.vb = v3.uv.y;
-				ts[cursli].sli.vc = v2.uv.y;
-				ts[cursli].sli.vd = v3.uv.y;
+				sli.ua = v1.uv.x;
+				sli.ub = v3.uv.x;
+				sli.uc = v2.uv.x;
+				sli.ud = v3.uv.x;
+				sli.va = v1.uv.y;
+				sli.vb = v3.uv.y;
+				sli.vc = v2.uv.y;
+				sli.vd = v3.uv.y;
 				// Vertices.
-				ts[cursli].sli.v[0] = &tri.verts[0];
-				ts[cursli].sli.v[1] = &tri.verts[2];
-				ts[cursli].sli.v[2] = &tri.verts[1];
-				ts[cursli].sli.v[3] = &tri.verts[2];
+				sli.v[0] = &tri.verts[0];
+				sli.v[1] = &tri.verts[2];
+				sli.v[2] = &tri.verts[1];
+				sli.v[3] = &tri.verts[2];
 				//
-				ts[cursli].sli.v2[0] = &v1;
-				ts[cursli].sli.v2[1] = &v3;
-				ts[cursli].sli.v2[2] = &v2;
-				ts[cursli].sli.v2[3] = &v3;
+				sli.v2[0] = &v1;
+				sli.v2[1] = &v3;
+				sli.v2[2] = &v2;
+				sli.v2[3] = &v3;
 				// Point to transform for mesh.
-				ts[cursli].sli.m = &filledtrimat;
+				sli.m = &filledtrimat;
 				//
-				ts[cursli].sli.sclr = _tricolor;
+				sli.sclr = _tricolor;
 				//
-				DrawTriScanLine(ts[cursli].sli, v1, v3, v2, v3, _tricolor); // Bottom.
+				DrawTriScanLine(sli, v1, v3, v2, v3, _tricolor); // Bottom.
 				//cursli++;
 				//TrySubmitThreadpoolCallback(DrawLineCallback, (void *)ts, 0);
 			}
@@ -1505,100 +1167,76 @@ void Boop3D::DrawFilledTri( B3DTriangle &tri, mat4 &filledtrimat, mat4 &_pmtx, C
 		else {
 			if( yidx < v2.xyz.y ) {
 				// Shading values.
-				ts[cursli].sli.dota = dotn1;
-				ts[cursli].sli.dotb = dotn2;
-				ts[cursli].sli.dotc = dotn1;
-				ts[cursli].sli.dotd = dotn3;
+				sli.dota = dotn1;
+				sli.dotb = dotn2;
+				sli.dotc = dotn1;
+				sli.dotd = dotn3;
 				// Texture coordinate values.
-				ts[cursli].sli.ua = v1.uv.x;
-				ts[cursli].sli.ub = v2.uv.x;
-				ts[cursli].sli.uc = v1.uv.x;
-				ts[cursli].sli.ud = v3.uv.x;
-				ts[cursli].sli.va = v1.uv.y;
-				ts[cursli].sli.vb = v2.uv.y;
-				ts[cursli].sli.vc = v1.uv.y;
-				ts[cursli].sli.vd = v3.uv.y;
+				sli.ua = v1.uv.x;
+				sli.ub = v2.uv.x;
+				sli.uc = v1.uv.x;
+				sli.ud = v3.uv.x;
+				sli.va = v1.uv.y;
+				sli.vb = v2.uv.y;
+				sli.vc = v1.uv.y;
+				sli.vd = v3.uv.y;
 				// Vertices.
-				ts[cursli].sli.v[0] = &tri.verts[0];
-				ts[cursli].sli.v[1] = &tri.verts[1];
-				ts[cursli].sli.v[2] = &tri.verts[0];
-				ts[cursli].sli.v[3] = &tri.verts[2];
+				sli.v[0] = &tri.verts[0];
+				sli.v[1] = &tri.verts[1];
+				sli.v[2] = &tri.verts[0];
+				sli.v[3] = &tri.verts[2];
 				//
-				ts[cursli].sli.v2[0] = &v1;
-				ts[cursli].sli.v2[1] = &v2;
-				ts[cursli].sli.v2[2] = &v1;
-				ts[cursli].sli.v2[3] = &v3;
+				sli.v2[0] = &v1;
+				sli.v2[1] = &v2;
+				sli.v2[2] = &v1;
+				sli.v2[3] = &v3;
 				// Point to transform for mesh.
-				ts[cursli].sli.m = &filledtrimat;
+				sli.m = &filledtrimat;
 				//
-				ts[cursli].sli.sclr = _tricolor;
+				sli.sclr = _tricolor;
 				//
-				DrawTriScanLine(ts[cursli].sli, v1, v2, v1, v3, _tricolor); // Top.
+				DrawTriScanLine(sli, v1, v2, v1, v3, _tricolor); // Top.
 				//cursli++;
 				//TrySubmitThreadpoolCallback(DrawLineCallback, (void *)ts, 0);
 			}
 			else {
 				// Shading values.
-				ts[cursli].sli.dota = dotn2;
-				ts[cursli].sli.dotb = dotn3;
-				ts[cursli].sli.dotc = dotn1;
-				ts[cursli].sli.dotd = dotn3;
+				sli.dota = dotn2;
+				sli.dotb = dotn3;
+				sli.dotc = dotn1;
+				sli.dotd = dotn3;
 				// Texture coordinate values.
-				ts[cursli].sli.ua = v2.uv.x;
-				ts[cursli].sli.ub = v3.uv.x;
-				ts[cursli].sli.uc = v1.uv.x;
-				ts[cursli].sli.ud = v3.uv.x;
-				ts[cursli].sli.va = v2.uv.y;
-				ts[cursli].sli.vb = v3.uv.y;
-				ts[cursli].sli.vc = v1.uv.y;
-				ts[cursli].sli.vd = v3.uv.y;
+				sli.ua = v2.uv.x;
+				sli.ub = v3.uv.x;
+				sli.uc = v1.uv.x;
+				sli.ud = v3.uv.x;
+				sli.va = v2.uv.y;
+				sli.vb = v3.uv.y;
+				sli.vc = v1.uv.y;
+				sli.vd = v3.uv.y;
 				// Vertices.
-				ts[cursli].sli.v[0] = &tri.verts[1];
-				ts[cursli].sli.v[1] = &tri.verts[2];
-				ts[cursli].sli.v[2] = &tri.verts[0];
-				ts[cursli].sli.v[3] = &tri.verts[2];
+				sli.v[0] = &tri.verts[1];
+				sli.v[1] = &tri.verts[2];
+				sli.v[2] = &tri.verts[0];
+				sli.v[3] = &tri.verts[2];
 				//
-				ts[cursli].sli.v2[0] = &v2;
-				ts[cursli].sli.v2[1] = &v3;
-				ts[cursli].sli.v2[2] = &v1;
-				ts[cursli].sli.v2[3] = &v3;
+				sli.v2[0] = &v2;
+				sli.v2[1] = &v3;
+				sli.v2[2] = &v1;
+				sli.v2[3] = &v3;
 				// Point to transform for mesh.
-				ts[cursli].sli.m = &filledtrimat;
+				sli.m = &filledtrimat;
 				//
-				ts[cursli].sli.sclr = _tricolor;
+				sli.sclr = _tricolor;
 				//
-				DrawTriScanLine(ts[cursli].sli, v2, v3, v1, v3, _tricolor); // Bottom.
+				DrawTriScanLine(sli, v2, v3, v1, v3, _tricolor); // Bottom.
 				//cursli++;
 				//TrySubmitThreadpoolCallback(DrawLineCallback, (void *)ts, 0);
 			}
 		}
 
 	} // for(int yidx...
-
-	//while ( dethread < NUM_THREADS ) {  }
-	//threadidx = 0;
-	//dethread = 0;
-	//cursli = 0;
-	
-	/*if( cursli >= NUM_THREADS ) {
-		while ( dethread < threadidx ) {  }
-		threadidx = 0;
-		dethread = 0;
-		cursli = 0;
-	}*/
-
-	// Handle leftover lines.
-	//if (cursli > 0) {
-
-	//	// Start the thread index at the beginning.
-	//	threadidx = 0;
-	//	dethread = 0;
-	//	// Use a few threads to draw the rest.
-	//	for (int i = 0; i < cursli; i++)
-	//		TrySubmitThreadpoolCallback(DrawLineCallback, this, 0);
-	//	while (dethread < cursli) {}
-	//}
-
+	#endif
 	// We just rendered triangle.
 	// Update amount we've been showing the user.
 	trisrendered++;
@@ -1663,12 +1301,6 @@ void Boop3D::DrawTriScanLine( B3DScanLineInfo &b3dsli,
 	float ez = 0.0f;
 
 	// Interpolate texture coordinates on Y. (Perspective Correct)
-	// This is not the right way...
-	/*su = Interpolate(b3dsli.ua / z1, b3dsli.ub / z1, gradient1);
-	eu = Interpolate(b3dsli.uc / z2, b3dsli.ud / z2, gradient2);
-	sv = Interpolate(b3dsli.va / z1, b3dsli.vb / z1, gradient1);
-	ev = Interpolate(b3dsli.vc / z2, b3dsli.vd / z2, gradient2);*/
-	// This is better. Perspective Correct.
 	if( TEXTURING == TEXTURES_ON ) {
 		su = Interpolate(b3dsli.ua / vstart1.xyz.z, b3dsli.ub / vend1.xyz.z, gradient1);
 		eu = Interpolate(b3dsli.uc / vstart2.xyz.z, b3dsli.ud / vend2.xyz.z, gradient2);
@@ -1767,231 +1399,11 @@ void Boop3D::DrawTriScanLine( B3DScanLineInfo &b3dsli,
 		// Affine Texturing.
 		////////////////////
 
-		/////////////////////////////////
-		// Perspective-correct Texturing.
-
-			//if( curMesh->texturebuffer && TEXTURING == TEXTURES_ON && false ) {
-			//
-			//	float U1 = b3dsli.v[0]->uv.x;
-			//	float V1 = b3dsli.v[0]->uv.y;
-			//	float Z1 = b3dsli.v[0]->xyz.z;
-			//	float U2 = b3dsli.v[2]->uv.x;
-			//	float V2 = b3dsli.v[2]->uv.y;
-			//	float Z2 = b3dsli.v[2]->xyz.z;
-			//
-			//	float scru1 = U1 / Z1;
-			//	float scrv1 = V1 / Z1;
-			//	float scrz1 = 1 / Z1;
-			//	float scru2 = U2 / Z2;
-			//	float scrv2 = V2 / Z2;
-			//	float scrz2 = 1 / Z2;
-			//
-			//	// float tgrad = (scru2 - scru1) / (vend1.xyz.y - vstart1.xyz.y)
-			//
-			//	float uu = Interpolate(scru1, scru2, zgradient);
-			//	float vv = Interpolate(scrv1, scrv2, zgradient);
-			//	float zz = Interpolate(scrz1, scrz2, zgradient);
-			//
-			//
-			//
-			//	float deltascru = 0;
-			//	float deltascrv = 0;
-			//	float deltascrz = 0;
-			//
-			//	float recip = 1.0f / zz;
-			//	int _z = 1;
-			//	int _u = (uu / zz) * recip;
-			//	int _v = (vv / zz) * recip;
-			//
-			//	scru1 += deltascru;
-			//	scrv1 += deltascrv;
-			//	scrz1 += deltascrz;
-			//
-			//	int idx = ( ((int)_v * curMesh->txwidth + (int)_u) * curMesh->txdepth );
-			//	if(idx < 0)
-			//		idx = 0;
-			//	if(idx > curMesh->txwidth * curMesh->txheight * curMesh->txdepth)
-			//		idx = curMesh->txwidth * curMesh->txheight * curMesh->txdepth - 1;
-			//	// int idx = ((_v * curMesh->txwidth + _u) * curMesh->txdepth);
-			//	float r = curMesh->texturebuffer[ idx + 0 ];
-			//	float g = curMesh->texturebuffer[ idx + 1 ];
-			//	float b = curMesh->texturebuffer[ idx + 2 ];
-			//	float a = curMesh->texturebuffer[ idx + 3 ];
-			//	texturecolor = vec3(r / 255, g / 255, b / 255, a / 255);
-			//}
-
-		// Perspective-correct Texturing.
-		/////////////////////////////////
-
-		/////////////////////////////////
-		// Perspective-correct Texturing.
-
-			//if( curMesh->texturebuffer && TEXTURING == TEXTURES_ON ) {
-			//
-			//	// filledtrimat * mat4( tri.verts[0].xyz );
-			//
-			//	mat4 v1mtx = *b3dsli.m * mat4( b3dsli.v[0]->xyz );
-			//	mat4 v2mtx = *b3dsli.m * mat4( b3dsli.v[1]->xyz );
-			//	mat4 v3mtx = *b3dsli.m * mat4( b3dsli.v[2]->xyz );
-			//
-			//	/*mat4 v1mtx = mat4( b3dsli.v[0]->xyz ) * *b3dsli.m;
-			//	mat4 v2mtx = mat4( b3dsli.v[1]->xyz ) * *b3dsli.m;
-			//	mat4 v3mtx = mat4( b3dsli.v[2]->xyz ) * *b3dsli.m;*/;
-			//
-			//	vec3 Bp = v1mtx[3];
-			//	vec3 Up = v2mtx[3] - v1mtx[3];
-			//	vec3 Vp = v3mtx[3] - v1mtx[3];
-			//	Up = normalize(Up);
-			//	Vp = normalize(Vp);
-			//	/*vec3 Up = vec3(1, 0);
-			//	vec3 Vp = vec3(0, -1);*/
-			//
-			//	vec3 Us = cross(Bp, Vp);
-			//	vec3 Vs = cross(Up, Bp);
-			//	vec3 Zs = cross(Vp, Up);
-			//	Us = normalize(Us);
-			//	Vs = normalize(Vs);
-			//	Zs = normalize(Zs);
-			//
-			//
-			//	float _z = fabs( (Zs.z + Zs.y * b3dsli.y + Zs.x * pixl) );
-			//	float _u = fabs( (Us.z + Us.y * b3dsli.y + Us.x * pixl) ) - clirect.right / 2;
-			//	float _v = fabs( (Vs.z + Vs.y * b3dsli.y + Vs.x * pixl) ) - clirect.bottom / 2;
-			//	// float _z = 25;
-			//
-			//	int idx = ( ((int)_v * curMesh->txwidth + (int)_u) * curMesh->txdepth );
-			//	if(idx < 0)
-			//		idx = 0;
-			//	if(idx > curMesh->txwidth * curMesh->txheight * curMesh->txdepth)
-			//		idx = curMesh->txwidth * curMesh->txheight * curMesh->txdepth - 1;
-			//	// int idx = ((_v * curMesh->txwidth + _u) * curMesh->txdepth);
-			//	float r = curMesh->texturebuffer[ idx + 0 ];
-			//	float g = curMesh->texturebuffer[ idx + 1 ];
-			//	float b = curMesh->texturebuffer[ idx + 2 ];
-			//	float a = curMesh->texturebuffer[ idx + 3 ];
-			//	texturecolor = vec3(r / 255, g / 255, b / 255, a / 255);
-			//}
-
-		// Perspective-correct Texturing.
-		/////////////////////////////////
-
-		/////////////////////////////////
-		// Perspective-correct Texturing.
-
-			//if( curMesh->texturebuffer && TEXTURING == TEXTURES_ON ) {
-			//
-			//	// Texture values. Point/Vector/Vector
-			//	// P = (0,1), M = (1,1)-(0,1), N = (0,0)-(0,1)
-			//	// P=P1, M=P2-P1, N=P3-P1 etc
-			//
-			//	// Points for texture.
-			//	vec3 Pp = vec3(0, 1);
-			//	vec3 Mp = vec3(1, 1);
-			//	vec3 Np = vec3(0, 0);
-			//	// Create matrices for these points, and transform.
-			//	mat4 Pm = *b3dsli.m * mat4(Pp);
-			//	mat4 Mm = *b3dsli.m * mat4(Mp);
-			//	mat4 Nm = *b3dsli.m * mat4(Np);
-			//
-			//	/*mat4 Pm = mat4(Pp) * *b3dsli.m;
-			//	mat4 Mm = mat4(Mp) * *b3dsli.m;
-			//	mat4 Nm = mat4(Np) * *b3dsli.m;*/
-			//	// Store texture origin. Calc M and N vectors.
-			//	vec3 Pv = Pm[3];
-			//	vec3 Mv = Mm[3] - Pm[3];
-			//	vec3 Nv = Nm[3] - Pm[3];
-			//	Mv = normalize(Mv);
-			//	Nv = normalize(Nv);
-			//	// Calc "3 Magic Vectors/9 Magic Constants".
-			//	vec3 A = cross(Pv, Nv);
-			//	vec3 B = cross(Mv, Pv);
-			//	vec3 C = cross(Nv, Mv);
-			//	A = normalize(A);
-			//	B = normalize(B);
-			//	C = normalize(C);
-			//	// Screen Vector? Uses current pixel position and
-			//	// near plane depth.
-			//	vec3 S = vec3( (float)pixl, (float)b3dsli.y, 375/*(float)clirect.right*/ );
-			//	// More Magic. :/
-			//	float ad = -dot(S, A) * curMesh->txwidth;
-			//	float bd = dot(S, B) * curMesh->txheight;
-			//	float cd = dot(S, C);
-			//	// Finally calc uv.
-			//	int _u = int(ad / cd);
-			//	int _v = int(bd / cd);
-			//	int idx = ((_v * curMesh->txwidth + _u) * curMesh->txdepth);
-			//	if(idx < 0) idx = 0;
-			//	if(idx > curMesh->txwidth * curMesh->txheight * curMesh->txdepth)
-			//		idx = curMesh->txwidth * curMesh->txheight * curMesh->txdepth - 1;
-			//	// int idx = ((_v * curMesh->txwidth + _u) * curMesh->txdepth);
-			//	float r = curMesh->texturebuffer[ idx + 0 ];
-			//	float g = curMesh->texturebuffer[ idx + 1 ];
-			//	float b = curMesh->texturebuffer[ idx + 2 ];
-			//	float a = curMesh->texturebuffer[ idx + 3 ];
-			//	texturecolor = vec3(r / 255, g / 255, b / 255, a / 255);
-			//}
-
-		// Perspective-correct Texturing.
-		/////////////////////////////////
-
-		/////////////////////////////////
-		// Perspective-correct Texturing.
-
-			//if( curMesh->texturebuffer && TEXTURING == TEXTURES_ON && false  ) {
-			//
-			//	B3DVertex v1 = *b3dsli.v[0];
-			//	B3DVertex v2 = *b3dsli.v[1];
-			//	B3DVertex v3 = *b3dsli.v[2];
-			//	B3DVertex v4 = *b3dsli.v[3];
-			//
-			//
-			//	//vec3 Up = v2 - v1;
-			//	//vec3 Vp = v3 - v1;
-			//	//Up = normalize(Up);
-			//	//Vp = normalize(Vp);
-			//	//vec3 sZ = cross(Up, Vp); // Face normal.
-			//	//vec3 sU = cross(Vp, v1); // Right.
-			//	//vec3 sV = cross(v1, Up); // Up.
-			//	//mat4 uvmtx;
-			//	//uvmtx[0] = sU;
-			//	//uvmtx[1] = sV;
-			//	//uvmtx[2] = sZ;
-			//
-			//
-			//
-			//	/*int u = a * curMesh->txwidth / c;
-			//	int v = b * curMesh->txwidth / c;*/
-			//
-			//	float u = Interpolate(su, eu, zgradient);
-			//	float v = Interpolate(sv, ev, zgradient);
-			//
-			//
-			//	float ssu = u / (1 / z);
-			//	float ssv = v / (1 / z);
-			//
-			//	int _u = abs( (int)(ssu) / (1 / z) );
-			//	int _v = abs( (int)(ssv) / (1 / z) );
-			//	/*int _u = int(u / sz);
-			//	int _v = int(v / sz);*/
-			//	int idx = ((_v * curMesh->txwidth + _u) * curMesh->txdepth);
-			//	/*int idx = 0;*/
-			//	float r = curMesh->texturebuffer[ idx + 0 ];
-			//	float g = curMesh->texturebuffer[ idx + 1 ];
-			//	float b = curMesh->texturebuffer[ idx + 2 ];
-			//	float a = curMesh->texturebuffer[ idx + 3 ];
-			//	texturecolor = vec3(r / 255, g / 255, b / 255, a / 255);
-			//}
-
-		// Perspective-correct Texturing.
-		/////////////////////////////////
-
 		// Pixel Color.
 		// 255 = 1.0f. 128 = 0.5f. 0 = 0.0f.
 		vec3 pixclr( (float)r / 255,
 					 (float)g / 255,
 					 (float)b / 255 );
-		// This line very slow. Gained about 30fps after rolling it out.
-		// vec3 * operator creates a bunch of temporary objects.
 		// pixclr = pixclr * texturecolor;
 		pixclr.x = pixclr.x * texturecolor.x;
 		pixclr.y = pixclr.y * texturecolor.y;
@@ -2165,6 +1577,379 @@ void Boop3D::LoadBmp(const char *szPath,
 
 } // LoadBmp()
 
+
+
+
+//// For transform thread.
+//struct FastTransformData {
+//	Boop3D *bp;
+//	mat4 *vm1, *vm2, *vm3;
+//	mat4 *filledmat;
+//	vec3 *v1, *v2, *v3;
+//	volatile bool done;
+//};
+//
+//// Culling thread.
+//// Frustum, backface, etc.
+//struct FastCullData {
+//	mat4 *viewmatrix;
+//	mat4 *vm1, *vm2, *vm3;
+//	vec3 vt1tovt2, vt2tovt3;
+//	bool result;
+//	volatile bool done;
+//};
+//
+//
+//// Passed to culling thread for access to Boop3D data.
+//FastCullData fastnearcull, fastfarcull, fastbackcull;
+//// Used with thread for quickly transforming points.
+//FastTransformData ftd;
+
+
+
+// This commented bit just for info. Not used since we're specifying
+// 32bit color depth. This part figures out how many bytes are
+// left after the last pixel of the row's byte.
+/*RowMult = 4 - (((bitmapInfo.bmiHeader.biBitCount * bitmapInfo.bmiHeader.biWidth) / 8) % 4);
+if ( RowMult == 4 )
+RowMult = 0;
+RowMult += (bitmapInfo.bmiHeader.biBitCount * bitmapInfo.bmiHeader.biWidth / 8);*/
+
+// TODO: Remove.
+// Rotate the meshes.
+// static float rot = 1;
+// rot += 0.1f;
+
+// Rotate and scale this mesh's matrix.
+/*mat4 rotamtx = rotate( rot, vec3(0, 1, 0) );
+mat4 scalemtx = scale( vec3(1.0f, 1.0f, 1.0f) );*/
+//		meshlist[midx].matrix = mat4( meshlist[midx].matrix[3] ) *
+//								rotamtx *
+//								scalemtx;
+// meshlist[midx].matrix *= rotamtx;
+
+
+/*float wun = m1->columns[0].x;
+float too = m2->columns[0].x;
+float res = 0.0f;*/
+/*__asm {
+__asm mov eax, wun
+__asm mov ecx, too
+__asm mul ecx
+__asm mov res, 1234
+}*/
+
+/*float asdf = m1->columns[0].x * m2->columns[0].x;
+float asdf2 = 0.0f;
+__asm {
+mov  eax, dword ptr [m1]
+fld		  dword ptr [eax]
+mov  ecx, dword ptr [m2]
+fmul	  dword ptr [ecx]
+fstp	  dword ptr [asdf2]
+}*/
+
+
+//////////////////////////////
+//dest->columns[0].x = m10x * m20x + m11x * m20y + m12x * m20z + m13x * m20w;
+//dest->columns[1].x = m10x * m21x + m11x * m21y + m12x * m21z + m13x * m21w;
+//dest->columns[2].x = m10x * m22x + m11x * m22y + m12x * m22z + m13x * m22w;
+//dest->columns[3].x = m10x * m23x + m11x * m23y + m12x * m23z + m13x * m23w;
+///////
+//dest->columns[0].y = m10y * m20x + m11y * m20y + m12y * m20z + m13y * m20w;
+//dest->columns[1].y = m10y * m21x + m11y * m21y + m12y * m21z + m13y * m21w;
+//dest->columns[2].y = m10y * m22x + m11y * m22y + m12y * m22z + m13y * m22w;
+//dest->columns[3].y = m10y * m23x + m11y * m23y + m12y * m23z + m13y * m23w;
+///////
+//dest->columns[0].z = m10z * m20x + m11z * m20y + m12z * m20z + m13z * m20w;
+//dest->columns[1].z = m10z * m21x + m11z * m21y + m12z * m21z + m13z * m21w;
+//dest->columns[2].z = m10z * m22x + m11z * m22y + m12z * m22z + m13z * m22w;
+//dest->columns[3].z = m10z * m23x + m11z * m23y + m12z * m23z + m13z * m23w;
+///////
+//dest->columns[0].w = m10w * m20x + m11w * m20y + m12w * m20z + m13w * m20w;
+//dest->columns[1].w = m10w * m21x + m11w * m21y + m12w * m21z + m13w * m21w;
+//dest->columns[2].w = m10w * m22x + m11w * m22y + m12w * m22z + m13w * m22w;
+//dest->columns[3].w = m10w * m23x + m11w * m23y + m12w * m23z + m13w * m23w;
+/*dest->columns[0].x = m1->columns[0].x * m2->columns[0].x +
+m1->columns[1].x * m2->columns[0].y +
+m1->columns[2].x * m2->columns[0].z +
+m1->columns[3].x * m2->columns[0].w;
+dest->columns[1].x = m1->columns[0].x * m2->columns[1].x +
+m1->columns[1].x * m2->columns[1].y +
+m1->columns[2].x * m2->columns[1].z +
+m1->columns[3].x * m2->columns[1].w;
+dest->columns[2].x = m1->columns[0].x * m2->columns[2].x +
+m1->columns[1].x * m2->columns[2].y +
+m1->columns[2].x * m2->columns[2].z +
+m1->columns[3].x * m2->columns[2].w;
+dest->columns[3].x = m1->columns[0].x * m2->columns[3].x +
+m1->columns[1].x * m2->columns[3].y +
+m1->columns[2].x * m2->columns[3].z +
+m1->columns[3].x * m2->columns[3].w;
+dest->columns[0].y = m1->columns[0].y * m2->columns[0].x +
+m1->columns[1].y * m2->columns[0].y +
+m1->columns[2].y * m2->columns[0].z +
+m1->columns[3].y * m2->columns[0].w;
+dest->columns[1].y = m1->columns[0].y * m2->columns[1].x +
+m1->columns[1].y * m2->columns[1].y +
+m1->columns[2].y * m2->columns[1].z +
+m1->columns[3].y * m2->columns[1].w;
+dest->columns[2].y = m1->columns[0].y * m2->columns[2].x +
+m1->columns[1].y * m2->columns[2].y +
+m1->columns[2].y * m2->columns[2].z +
+m1->columns[3].y * m2->columns[2].w;
+dest->columns[3].y = m1->columns[0].y * m2->columns[3].x +
+m1->columns[1].y * m2->columns[3].y +
+m1->columns[2].y * m2->columns[3].z +
+m1->columns[3].y * m2->columns[3].w;
+dest->columns[0].z = m1->columns[0].z * m2->columns[0].x +
+m1->columns[1].z * m2->columns[0].y +
+m1->columns[2].z * m2->columns[0].z +
+m1->columns[3].z * m2->columns[0].w;
+dest->columns[1].z = m1->columns[0].z * m2->columns[1].x +
+m1->columns[1].z * m2->columns[1].y +
+m1->columns[2].z * m2->columns[1].z +
+m1->columns[3].z * m2->columns[1].w;
+dest->columns[2].z = m1->columns[0].z * m2->columns[2].x +
+m1->columns[1].z * m2->columns[2].y +
+m1->columns[2].z * m2->columns[2].z +
+m1->columns[3].z * m2->columns[2].w;
+dest->columns[3].z = m1->columns[0].z * m2->columns[3].x +
+m1->columns[1].z * m2->columns[3].y +
+m1->columns[2].z * m2->columns[3].z +
+m1->columns[3].z * m2->columns[3].w;
+dest->columns[0].w = m1->columns[0].w * m2->columns[0].x +
+m1->columns[1].w * m2->columns[0].y +
+m1->columns[2].w * m2->columns[0].z +
+m1->columns[3].w * m2->columns[0].w;
+dest->columns[1].w = m1->columns[0].w * m2->columns[1].x +
+m1->columns[1].w * m2->columns[1].y +
+m1->columns[2].w * m2->columns[1].z +
+m1->columns[3].w * m2->columns[1].w;
+dest->columns[2].w = m1->columns[0].w * m2->columns[2].x +
+m1->columns[1].w * m2->columns[2].y +
+m1->columns[2].w * m2->columns[2].z +
+m1->columns[3].w * m2->columns[2].w;
+dest->columns[3].w = m1->columns[0].w * m2->columns[3].x +
+m1->columns[1].w * m2->columns[3].y +
+m1->columns[2].w * m2->columns[3].z +
+m1->columns[3].w * m2->columns[3].w;*/
+
+//float f1 = m1->columns[0].x;
+//float f2 = m2->columns[0].x;
+//float res1, res2, res3, res4;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].x;
+//f2 = m2->columns[0].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].x;
+//f2 = m2->columns[0].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].x;
+//f2 = m2->columns[0].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[0].x = res1 + res2 + res3 + res4;
+//f1 = m1->columns[0].x;
+//f2 = m2->columns[1].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].x;
+//f2 = m2->columns[1].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].x;
+//f2 = m2->columns[1].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].x;
+//f2 = m2->columns[1].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[1].x = res1 + res2 + res3 + res4;
+//f1 = m1->columns[0].x;
+//f2 = m2->columns[2].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].x;
+//f2 = m2->columns[2].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].x;
+//f2 = m2->columns[2].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].x;
+//f2 = m2->columns[2].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[2].x = res1 + res2 + res3 + res4;
+//f1 = m1->columns[0].x;
+//f2 = m2->columns[3].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].x;
+//f2 = m2->columns[3].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].x;
+//f2 = m2->columns[3].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].x;
+//f2 = m2->columns[3].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[3].x = res1 + res2 + res3 + res4;
+//// 
+//f1 = m1->columns[0].y;
+//f2 = m2->columns[0].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].y;
+//f2 = m2->columns[0].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].y;
+//f2 = m2->columns[0].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].y;
+//f2 = m2->columns[0].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[0].y = res1 + res2 + res3 + res4;
+//f1 = m1->columns[0].y;
+//f2 = m2->columns[1].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].y;
+//f2 = m2->columns[1].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].y;
+//f2 = m2->columns[1].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].y;
+//f2 = m2->columns[1].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[1].y = res1 + res2 + res3 + res4;
+//f1 = m1->columns[0].y;
+//f2 = m2->columns[2].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].y;
+//f2 = m2->columns[2].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].y;
+//f2 = m2->columns[2].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].y;
+//f2 = m2->columns[2].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[2].y = res1 + res2 + res3 + res4;
+//f1 = m1->columns[0].y;
+//f2 = m2->columns[3].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].y;
+//f2 = m2->columns[3].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].y;
+//f2 = m2->columns[3].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].y;
+//f2 = m2->columns[3].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[3].y = res1 + res2 + res3 + res4;
+//// 
+//f1 = m1->columns[0].z;
+//f2 = m2->columns[0].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].z;
+//f2 = m2->columns[0].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].z;
+//f2 = m2->columns[0].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].z;
+//f2 = m2->columns[0].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[0].z = res1 + res2 + res3 + res4;
+//f1 = m1->columns[0].z;
+//f2 = m2->columns[1].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].z;
+//f2 = m2->columns[1].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].z;
+//f2 = m2->columns[1].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].z;
+//f2 = m2->columns[1].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[1].z = res1 + res2 + res3 + res4;
+//f1 = m1->columns[0].z;
+//f2 = m2->columns[2].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].z;
+//f2 = m2->columns[2].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].z;
+//f2 = m2->columns[2].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].z;
+//f2 = m2->columns[2].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[2].z = res1 + res2 + res3 + res4;
+//f1 = m1->columns[0].z;
+//f2 = m2->columns[3].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].z;
+//f2 = m2->columns[3].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].z;
+//f2 = m2->columns[3].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].z;
+//f2 = m2->columns[3].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[3].z = res1 + res2 + res3 + res4;
+//// 
+//f1 = m1->columns[0].w;
+//f2 = m2->columns[0].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].w;
+//f2 = m2->columns[0].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].w;
+//f2 = m2->columns[0].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].w;
+//f2 = m2->columns[0].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[0].w = res1 + res2 + res3 + res4;
+//f1 = m1->columns[0].w;
+//f2 = m2->columns[1].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].w;
+//f2 = m2->columns[1].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].w;
+//f2 = m2->columns[1].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].w;
+//f2 = m2->columns[1].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[1].w = res1 + res2 + res3 + res4;
+//f1 = m1->columns[0].w;
+//f2 = m2->columns[2].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].w;
+//f2 = m2->columns[2].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].w;
+//f2 = m2->columns[2].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].w;
+//f2 = m2->columns[2].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[2].w = res1 + res2 + res3 + res4;
+//f1 = m1->columns[0].w;
+//f2 = m2->columns[3].x;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res1] }
+//f1 = m1->columns[1].w;
+//f2 = m2->columns[3].y;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res2] }
+//f1 = m1->columns[2].w;
+//f2 = m2->columns[3].z;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res3] }
+//f1 = m1->columns[3].w;
+//f2 = m2->columns[3].w;
+//__asm { fld dword ptr [f1] } __asm {fmul dword ptr [f2] } __asm { fst dword ptr [res4] }
+//dest->columns[3].w = res1 + res2 + res3 + res4;
+
+
+
 //////////////////
 // Camera Controls
 
@@ -2214,3 +1999,524 @@ HDC Boop3D::GetDCtxt( void ) {
 HDC Boop3D::GetBackbuffer( void ) {
 	return hdcMem;
 }
+
+//if (false) {
+/////////////////////
+//// Camera Cull Test
+
+//	// Near camera culling.
+//	fastnearcull.done = false;
+//	fastnearcull.result = true;
+//	fastnearcull.viewmatrix = &viewmat;
+//	fastnearcull.vm1 = &v1mtx;
+//	fastnearcull.vm2 = &v2mtx;
+//	fastnearcull.vm3 = &v3mtx;
+//	TrySubmitThreadpoolCallback(NearCullCallback, (void *)&fastnearcull, 0);
+
+//	// Far camera culling.
+//	fastfarcull.done = false;
+//	fastfarcull.result = true;
+//	fastfarcull.viewmatrix = &viewmat;
+//	fastfarcull.vm1 = &v1mtx;
+//	fastfarcull.vm2 = &v2mtx;
+//	fastfarcull.vm3 = &v3mtx;
+//	TrySubmitThreadpoolCallback(FarCullCallback, (void *)&fastfarcull, 0);
+//	
+
+//// Camera Cull Test
+/////////////////////
+
+///////////////////////
+//// Back-face Culling
+
+//	// With back-face culling, we could potentially
+//	// remove half of the triangles to be rasterized
+//	// on closed objects.
+
+//	// Far camera culling.
+//	fastbackcull.done = false;
+//	fastbackcull.result = true;
+//	fastbackcull.viewmatrix = &viewmat;
+//	fastbackcull.vm1 = &v1mtx;
+//	fastbackcull.vm2 = &v2mtx;
+//	fastbackcull.vm3 = &v3mtx;
+//	TrySubmitThreadpoolCallback(BackCullCallback, (void *)&fastbackcull, 0);
+
+//	// Wait for culling to finish, then skip this triangle if needed.
+//	while (!fastnearcull.done || !fastfarcull.done || !fastbackcull.done) {}
+//	if (fastnearcull.result == true) return;
+//	if (fastfarcull.result == true) return;
+//	if (fastbackcull.result == true) return;
+
+//// Back-face Culling
+///////////////////////
+//}
+
+// If triangle is outside of bounds of screen,
+// don't bother drawing it.
+//bool drawTri = true;
+//for(int ct = 0; ct < 3; ct++) {
+//	if(copytri.verts[ct].xyz.x < 0 || copytri.verts[ct].xyz.x >= clirect.right ||
+//	   copytri.verts[ct].xyz.y < 0 || copytri.verts[ct].xyz.y >= clirect.bottom) {
+//		drawTri = false;
+//		break;
+//	}
+//}
+
+//// If just ONE of the vertices was outside of the screen, don't
+//// draw the entire triangle.
+//if(drawTri == false)
+//	return;
+
+
+//// Start the thread index at the beginning.
+//threadidx = 0;
+//dethread = 0;
+
+
+
+
+// We only have so many threads.
+//if( cursli >= NUM_THREADS ) {
+//	cursli = 0;
+//	// CreateThread(0, 0, DrawLineThread, this, 0, NULL);
+//	// static DWORD WINAPI DrawLineThread(void *param) { return 0; }
+
+//	for( int i = 0; i < NUM_THREADS; i++ )
+//		TrySubmitThreadpoolCallback(DrawLineCallback, this, 0);
+//	while( dethread < NUM_THREADS ) {}
+
+//	// Start the thread index at the beginning.
+//	threadidx = 0;
+//	dethread = 0;
+//}
+
+
+/*if( cursli >= NUM_THREADS ) {
+while ( dethread < NUM_THREADS ) {  }
+threadidx = 0;
+dethread = 0;
+cursli = 0;
+}*/
+
+// sli[cursli].y = yidx;
+
+
+// This is not the right way...
+/*su = Interpolate(b3dsli.ua / z1, b3dsli.ub / z1, gradient1);
+eu = Interpolate(b3dsli.uc / z2, b3dsli.ud / z2, gradient2);
+sv = Interpolate(b3dsli.va / z1, b3dsli.vb / z1, gradient1);
+ev = Interpolate(b3dsli.vc / z2, b3dsli.vd / z2, gradient2);*/
+// This is better. Perspective Correct.
+
+//while ( dethread < NUM_THREADS ) {  }
+//threadidx = 0;
+//dethread = 0;
+//cursli = 0;
+
+/*if( cursli >= NUM_THREADS ) {
+while ( dethread < threadidx ) {  }
+threadidx = 0;
+dethread = 0;
+cursli = 0;
+}*/
+
+// Handle leftover lines.
+//if (cursli > 0) {
+
+//	// Start the thread index at the beginning.
+//	threadidx = 0;
+//	dethread = 0;
+//	// Use a few threads to draw the rest.
+//	for (int i = 0; i < cursli; i++)
+//		TrySubmitThreadpoolCallback(DrawLineCallback, this, 0);
+//	while (dethread < cursli) {}
+//}
+
+/////////////////////////////////
+// Perspective-correct Texturing.
+
+//if( curMesh->texturebuffer && TEXTURING == TEXTURES_ON && false ) {
+//
+//	float U1 = b3dsli.v[0]->uv.x;
+//	float V1 = b3dsli.v[0]->uv.y;
+//	float Z1 = b3dsli.v[0]->xyz.z;
+//	float U2 = b3dsli.v[2]->uv.x;
+//	float V2 = b3dsli.v[2]->uv.y;
+//	float Z2 = b3dsli.v[2]->xyz.z;
+//
+//	float scru1 = U1 / Z1;
+//	float scrv1 = V1 / Z1;
+//	float scrz1 = 1 / Z1;
+//	float scru2 = U2 / Z2;
+//	float scrv2 = V2 / Z2;
+//	float scrz2 = 1 / Z2;
+//
+//	// float tgrad = (scru2 - scru1) / (vend1.xyz.y - vstart1.xyz.y)
+//
+//	float uu = Interpolate(scru1, scru2, zgradient);
+//	float vv = Interpolate(scrv1, scrv2, zgradient);
+//	float zz = Interpolate(scrz1, scrz2, zgradient);
+//
+//
+//
+//	float deltascru = 0;
+//	float deltascrv = 0;
+//	float deltascrz = 0;
+//
+//	float recip = 1.0f / zz;
+//	int _z = 1;
+//	int _u = (uu / zz) * recip;
+//	int _v = (vv / zz) * recip;
+//
+//	scru1 += deltascru;
+//	scrv1 += deltascrv;
+//	scrz1 += deltascrz;
+//
+//	int idx = ( ((int)_v * curMesh->txwidth + (int)_u) * curMesh->txdepth );
+//	if(idx < 0)
+//		idx = 0;
+//	if(idx > curMesh->txwidth * curMesh->txheight * curMesh->txdepth)
+//		idx = curMesh->txwidth * curMesh->txheight * curMesh->txdepth - 1;
+//	// int idx = ((_v * curMesh->txwidth + _u) * curMesh->txdepth);
+//	float r = curMesh->texturebuffer[ idx + 0 ];
+//	float g = curMesh->texturebuffer[ idx + 1 ];
+//	float b = curMesh->texturebuffer[ idx + 2 ];
+//	float a = curMesh->texturebuffer[ idx + 3 ];
+//	texturecolor = vec3(r / 255, g / 255, b / 255, a / 255);
+//}
+
+// Perspective-correct Texturing.
+/////////////////////////////////
+
+/////////////////////////////////
+// Perspective-correct Texturing.
+
+//if( curMesh->texturebuffer && TEXTURING == TEXTURES_ON ) {
+//
+//	// filledtrimat * mat4( tri.verts[0].xyz );
+//
+//	mat4 v1mtx = *b3dsli.m * mat4( b3dsli.v[0]->xyz );
+//	mat4 v2mtx = *b3dsli.m * mat4( b3dsli.v[1]->xyz );
+//	mat4 v3mtx = *b3dsli.m * mat4( b3dsli.v[2]->xyz );
+//
+//	/*mat4 v1mtx = mat4( b3dsli.v[0]->xyz ) * *b3dsli.m;
+//	mat4 v2mtx = mat4( b3dsli.v[1]->xyz ) * *b3dsli.m;
+//	mat4 v3mtx = mat4( b3dsli.v[2]->xyz ) * *b3dsli.m;*/;
+//
+//	vec3 Bp = v1mtx[3];
+//	vec3 Up = v2mtx[3] - v1mtx[3];
+//	vec3 Vp = v3mtx[3] - v1mtx[3];
+//	Up = normalize(Up);
+//	Vp = normalize(Vp);
+//	/*vec3 Up = vec3(1, 0);
+//	vec3 Vp = vec3(0, -1);*/
+//
+//	vec3 Us = cross(Bp, Vp);
+//	vec3 Vs = cross(Up, Bp);
+//	vec3 Zs = cross(Vp, Up);
+//	Us = normalize(Us);
+//	Vs = normalize(Vs);
+//	Zs = normalize(Zs);
+//
+//
+//	float _z = fabs( (Zs.z + Zs.y * b3dsli.y + Zs.x * pixl) );
+//	float _u = fabs( (Us.z + Us.y * b3dsli.y + Us.x * pixl) ) - clirect.right / 2;
+//	float _v = fabs( (Vs.z + Vs.y * b3dsli.y + Vs.x * pixl) ) - clirect.bottom / 2;
+//	// float _z = 25;
+//
+//	int idx = ( ((int)_v * curMesh->txwidth + (int)_u) * curMesh->txdepth );
+//	if(idx < 0)
+//		idx = 0;
+//	if(idx > curMesh->txwidth * curMesh->txheight * curMesh->txdepth)
+//		idx = curMesh->txwidth * curMesh->txheight * curMesh->txdepth - 1;
+//	// int idx = ((_v * curMesh->txwidth + _u) * curMesh->txdepth);
+//	float r = curMesh->texturebuffer[ idx + 0 ];
+//	float g = curMesh->texturebuffer[ idx + 1 ];
+//	float b = curMesh->texturebuffer[ idx + 2 ];
+//	float a = curMesh->texturebuffer[ idx + 3 ];
+//	texturecolor = vec3(r / 255, g / 255, b / 255, a / 255);
+//}
+
+// Perspective-correct Texturing.
+/////////////////////////////////
+
+/////////////////////////////////
+// Perspective-correct Texturing.
+
+//if( curMesh->texturebuffer && TEXTURING == TEXTURES_ON ) {
+//
+//	// Texture values. Point/Vector/Vector
+//	// P = (0,1), M = (1,1)-(0,1), N = (0,0)-(0,1)
+//	// P=P1, M=P2-P1, N=P3-P1 etc
+//
+//	// Points for texture.
+//	vec3 Pp = vec3(0, 1);
+//	vec3 Mp = vec3(1, 1);
+//	vec3 Np = vec3(0, 0);
+//	// Create matrices for these points, and transform.
+//	mat4 Pm = *b3dsli.m * mat4(Pp);
+//	mat4 Mm = *b3dsli.m * mat4(Mp);
+//	mat4 Nm = *b3dsli.m * mat4(Np);
+//
+//	/*mat4 Pm = mat4(Pp) * *b3dsli.m;
+//	mat4 Mm = mat4(Mp) * *b3dsli.m;
+//	mat4 Nm = mat4(Np) * *b3dsli.m;*/
+//	// Store texture origin. Calc M and N vectors.
+//	vec3 Pv = Pm[3];
+//	vec3 Mv = Mm[3] - Pm[3];
+//	vec3 Nv = Nm[3] - Pm[3];
+//	Mv = normalize(Mv);
+//	Nv = normalize(Nv);
+//	// Calc "3 Magic Vectors/9 Magic Constants".
+//	vec3 A = cross(Pv, Nv);
+//	vec3 B = cross(Mv, Pv);
+//	vec3 C = cross(Nv, Mv);
+//	A = normalize(A);
+//	B = normalize(B);
+//	C = normalize(C);
+//	// Screen Vector? Uses current pixel position and
+//	// near plane depth.
+//	vec3 S = vec3( (float)pixl, (float)b3dsli.y, 375/*(float)clirect.right*/ );
+//	// More Magic. :/
+//	float ad = -dot(S, A) * curMesh->txwidth;
+//	float bd = dot(S, B) * curMesh->txheight;
+//	float cd = dot(S, C);
+//	// Finally calc uv.
+//	int _u = int(ad / cd);
+//	int _v = int(bd / cd);
+//	int idx = ((_v * curMesh->txwidth + _u) * curMesh->txdepth);
+//	if(idx < 0) idx = 0;
+//	if(idx > curMesh->txwidth * curMesh->txheight * curMesh->txdepth)
+//		idx = curMesh->txwidth * curMesh->txheight * curMesh->txdepth - 1;
+//	// int idx = ((_v * curMesh->txwidth + _u) * curMesh->txdepth);
+//	float r = curMesh->texturebuffer[ idx + 0 ];
+//	float g = curMesh->texturebuffer[ idx + 1 ];
+//	float b = curMesh->texturebuffer[ idx + 2 ];
+//	float a = curMesh->texturebuffer[ idx + 3 ];
+//	texturecolor = vec3(r / 255, g / 255, b / 255, a / 255);
+//}
+
+// Perspective-correct Texturing.
+/////////////////////////////////
+
+/////////////////////////////////
+// Perspective-correct Texturing.
+
+//if( curMesh->texturebuffer && TEXTURING == TEXTURES_ON && false  ) {
+//
+//	B3DVertex v1 = *b3dsli.v[0];
+//	B3DVertex v2 = *b3dsli.v[1];
+//	B3DVertex v3 = *b3dsli.v[2];
+//	B3DVertex v4 = *b3dsli.v[3];
+//
+//
+//	//vec3 Up = v2 - v1;
+//	//vec3 Vp = v3 - v1;
+//	//Up = normalize(Up);
+//	//Vp = normalize(Vp);
+//	//vec3 sZ = cross(Up, Vp); // Face normal.
+//	//vec3 sU = cross(Vp, v1); // Right.
+//	//vec3 sV = cross(v1, Up); // Up.
+//	//mat4 uvmtx;
+//	//uvmtx[0] = sU;
+//	//uvmtx[1] = sV;
+//	//uvmtx[2] = sZ;
+//
+//
+//
+//	/*int u = a * curMesh->txwidth / c;
+//	int v = b * curMesh->txwidth / c;*/
+//
+//	float u = Interpolate(su, eu, zgradient);
+//	float v = Interpolate(sv, ev, zgradient);
+//
+//
+//	float ssu = u / (1 / z);
+//	float ssv = v / (1 / z);
+//
+//	int _u = abs( (int)(ssu) / (1 / z) );
+//	int _v = abs( (int)(ssv) / (1 / z) );
+//	/*int _u = int(u / sz);
+//	int _v = int(v / sz);*/
+//	int idx = ((_v * curMesh->txwidth + _u) * curMesh->txdepth);
+//	/*int idx = 0;*/
+//	float r = curMesh->texturebuffer[ idx + 0 ];
+//	float g = curMesh->texturebuffer[ idx + 1 ];
+//	float b = curMesh->texturebuffer[ idx + 2 ];
+//	float a = curMesh->texturebuffer[ idx + 3 ];
+//	texturecolor = vec3(r / 255, g / 255, b / 255, a / 255);
+//}
+
+// Perspective-correct Texturing.
+/////////////////////////////////
+
+// Calls scanline drawing member function for each scanline in triangle.
+//void CALLBACK DrawLineCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
+//	// long value = InterlockedIncrement( &(((ThreadStruct *)context)->bp->threadidx) );
+//	long value = InterlockedIncrement( &threadidx );
+//	ThreadStruct &ts = ((ThreadStruct *)context)[value - 1];
+//	Boop3D &bp = *ts.bp;
+//	// long value = -1;
+////	EnterCriticalSection(&cs);
+////		value = ++(bp->threadidx);
+////	LeaveCriticalSection(&cs);
+//	// printf("%s\n", ((Boop3D *)context)->fpsstr );
+//	// printf("%ld, %ld\n", hival, value );
+//	//printf("A - %ld\n", value );
+//	/*bp->DrawTriScanLine(   bp->sli[value - 1],
+//						 *(bp->sli[value - 1].v2[0]),
+//						 *(bp->sli[value - 1].v2[1]),
+//						 *(bp->sli[value - 1].v2[2]),
+//						 *(bp->sli[value - 1].v2[3]),
+//						   bp->sli[value - 1].sclr );*/
+//	bp.DrawTriScanLine(   ts.sli,
+//						*(ts.sli.v2[0]),
+//						*(ts.sli.v2[1]),
+//						*(ts.sli.v2[2]),
+//						*(ts.sli.v2[3]),
+//						  ts.sli.sclr );
+//	long devalue = InterlockedIncrement( &dethread );
+//	/*long devalue = -1;
+//		EnterCriticalSection(&cs);
+//		devalue = ++(bp->dethread);
+//		LeaveCriticalSection(&cs);*/
+//	//printf("B - %ld\n", devalue);
+//}
+
+//void CALLBACK BackCullCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
+//	// Grab structure that we passed to our thread.
+//	FastCullData &fcd = *((FastCullData *)context);
+//
+//	// Easy pointing. :)
+//	vec3 &v1pos = (*fcd.vm1)[3];
+//	vec3 &v2pos = (*fcd.vm2)[3];
+//	vec3 &v3pos = (*fcd.vm3)[3];
+//	vec3 &campos = (*fcd.viewmatrix)[3];
+//	vec3 &camat = (*fcd.viewmatrix)[2];
+//
+//	// Create vector from vert1 to vert2, and one from vert2 to
+//	// vert3.
+//	fcd.vt1tovt2 = vec3(v2pos.x - v1pos.x, v2pos.y - v1pos.y, v2pos.z - v1pos.z);
+//	fcd.vt2tovt3 = vec3(v3pos.x - v2pos.x, v3pos.y - v2pos.y, v3pos.z - v2pos.z);
+//	// Cross those two vectors.
+//	vec3 crx_v12_v23 = cross(fcd.vt1tovt2, fcd.vt2tovt3);
+//	// Normalize the vector.
+//	crx_v12_v23 = normalize(crx_v12_v23);
+//
+//	// Create normal from camera position to vertex.
+//	vec3 camnorm = vec3(v1pos.x - campos.x, v1pos.y - campos.y, v1pos.z - campos.z);
+//	// vec3 camnorm = viewmat[2];
+//	camnorm = normalize(camnorm);
+//
+//	// Dot triangle normal with camera at.
+//	float normdist = dot(crx_v12_v23, camnorm);
+//
+//	// Zero or higher value means the triangle is facing the camera.
+//	// Negative means it is facing away from the camera. Discard.
+//	if (normdist < 0) {
+//		fcd.result = true;
+//		fcd.done = true;
+//		return;
+//	}
+//	fcd.result = false;
+//	fcd.done = true;
+//}
+
+//void CALLBACK FarCullCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
+//	// Grab structure that we passed to our thread.
+//	FastCullData &fcd = *((FastCullData *)context);
+//
+//	// Easy pointing. :)
+//	vec3 &v1pos = (*fcd.vm1)[3];
+//	vec3 &v2pos = (*fcd.vm2)[3];
+//	vec3 &v3pos = (*fcd.vm3)[3];
+//	vec3 &campos = (*fcd.viewmatrix)[3];
+//	vec3 &camat = (*fcd.viewmatrix)[2];
+//
+//	// Create vectors from far camera plane to vertices.
+//	const float fardist = 100.0f;
+//	vec3 farCamPos = vec3(campos.x + camat.x * fardist, campos.y + camat.y * fardist, campos.z + camat.z * fardist);
+//	vec3 v1vec(v1pos.x - farCamPos.x, v1pos.y - farCamPos.y, v1pos.z - farCamPos.z);
+//	vec3 v2vec(v2pos.x - farCamPos.x, v2pos.y - farCamPos.y, v2pos.z - farCamPos.z);
+//	vec3 v3vec(v3pos.x - farCamPos.x, v3pos.y - farCamPos.y, v3pos.z - farCamPos.z);
+//
+//	// Dot with negated camera at vector. This is our far plane normal.
+//	float dotv1z = dot(v1vec, camat * -1.0f);
+//	float dotv2z = dot(v2vec, camat * -1.0f);
+//	float dotv3z = dot(v3vec, camat * -1.0f);
+//
+//	// Discard triangle if past far camera plane.
+//	if (dotv1z < 0 || dotv2z < 0 || dotv3z < 0) {
+//		fcd.result = true;
+//		fcd.done = true;
+//		return;
+//	}
+//	fcd.result = false;
+//	fcd.done = true;
+//}
+//
+//void CALLBACK NearCullCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
+//	// Grab structure that we passed to our thread.
+//	FastCullData &fcd = *((FastCullData *)context);
+//
+//	// TODO: Fix this. Not able to handle camera on -z.
+//	// UPDATE - 11.07.2015: Figured out distance to cam on
+//	// pos z. Neg z distance might be wrong. Still need to
+//	// add code to check for tris behind camera.
+//
+//	// Distance test. If any of the components of the triangle are too close,
+//	// discard it.
+//	vec3 &v1pos = (*fcd.vm1)[3];
+//	vec3 &v2pos = (*fcd.vm2)[3];
+//	vec3 &v3pos = (*fcd.vm3)[3];
+//	vec3 &campos = (*fcd.viewmatrix)[3];
+//	vec3 &camat = (*fcd.viewmatrix)[2];
+//	//
+//	float dist1 = gdistance(campos, v1pos);
+//	float dist2 = gdistance(campos, v2pos);
+//	float dist3 = gdistance(campos, v3pos);
+//
+//	// Discard triangle if too close.
+//	if (dist1 < 0.1f || dist2 < 0.1f || dist3 < 0.1f) {
+//		fcd.result = true;
+//		fcd.done = true;
+//		return;
+//	}
+//
+//	// Here, we determine if the triangle is in view.
+//	// If any of the vertices are behind the camera, don't
+//	// draw the triangle.
+//
+//	// Create vectors from triangle vertex to camera position.
+//	vec3 v1vec = vec3(v1pos.x - campos.x, v1pos.y - campos.y, v1pos.z - campos.z);
+//	vec3 v2vec = vec3(v2pos.x - campos.x, v2pos.y - campos.y, v2pos.z - campos.z);
+//	vec3 v3vec = vec3(v3pos.x - campos.x, v3pos.y - campos.y, v3pos.z - campos.z);
+//
+//	// Dot camera's z(at) with these vectors.
+//	// Positive value - vertex is in front of plane.
+//	// Negative value - vertex is behind plane.
+//	// Zero value - vertex is on plane.
+//	float dotv1z = dot(v1vec, camat);
+//	float dotv2z = dot(v2vec, camat);
+//	float dotv3z = dot(v3vec, camat);
+//
+//	// Discard triangle if behind camera.
+//	if (dotv1z < 0 || dotv2z < 0 || dotv3z < 0) {
+//		fcd.result = true;
+//		fcd.done = true;
+//		return;
+//	}
+//
+//	fcd.result = false;
+//	fcd.done = true;
+//}
+//
+//void CALLBACK FastTransformCallback(PTP_CALLBACK_INSTANCE instance, void *context) {
+//	FastTransformData &ftd = *((FastTransformData *)context);
+//	Boop3D &bp = *ftd.bp;
+//	bp.FastTransformPoint(*ftd.vm1, *ftd.filledmat, *ftd.v1);
+//	bp.FastTransformPoint(*ftd.vm2, *ftd.filledmat, *ftd.v2);
+//	bp.FastTransformPoint(*ftd.vm3, *ftd.filledmat, *ftd.v3);
+//	ftd.done = true;
+//}

@@ -61,11 +61,14 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	boop.Initialize(hWnd);
 	boop.SetShading(SHADING_GOURAUD);
 	boop.SetTextures(TEXTURES_ON);
+	boop.CameraStrafeTo( vec3(0, 4, 1) );
 	// boop.LoadMesh("box_v_uv_n.obj", "roadtile_1024x1024.bmp");
 //	boop.LoadMesh("stylus.obj", "roadtile_1024x1024.bmp");
-	boop.LoadMesh("bman2_3015_Tris.obj", "rainbow.bmp");
-	boop.CameraStrafeTo( vec3(0, 4, 1) );
-	boop.GetMesh(0)->matrix.columns[3].y += 1.0f;
+	// boop.LoadMesh("bman2.obj", "rainbow.bmp");
+	// boop.LoadMesh("bman2_3015_Tris.obj", "rainbow.bmp");
+	boop.LoadMesh("smalltri.obj", "rainbow.bmp");
+	boop.GetMesh(0)->matrix.columns[3].y += 1.8f;
+	// boop.GetMesh(0)->matrix.columns[3].y += 1.0f;
 	boop.GetMesh(0)->matrix.columns[3].z = 1.5f;
 	// boop.LoadMesh("bman.obj", "yellow.bmp");
 	//boop.LoadMesh("bman.obj", "roadtile_1024x1024.bmp");
