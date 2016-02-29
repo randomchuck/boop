@@ -613,7 +613,6 @@ void Boop3D::Render(void) {
 				pixeltimer = GetTickCount();
 			}
 			DrawText(hdcMem, pixelsstr, strlen(pixelsstr), &fpsrect, DT_NOCLIP);
-		////
 
 	// FPS
 	///////
