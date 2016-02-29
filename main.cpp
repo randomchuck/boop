@@ -65,10 +65,10 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	// boop.LoadMesh("box_v_uv_n.obj", "roadtile_1024x1024.bmp");
 //	boop.LoadMesh("stylus.obj", "roadtile_1024x1024.bmp");
 	// boop.LoadMesh("bman2.obj", "rainbow.bmp");
-	// #define _ONE
+	#define _ONE
 	// #define _TWO
 	// #define _THREE
-	#define _FOUR
+	// #define _FOUR
 	#ifdef  _ONE
 		boop.LoadMesh("bman2_3015_Tris.obj", "rainbow.bmp");
 		boop.GetMesh(0)->matrix.columns[3].y += 1.0f;
@@ -110,13 +110,11 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	// boop.LoadMesh("box_v_uv_n.obj", "texture.bmp");
 	// boop.LoadMesh("box_v_uv_n.obj", "roadtile_1024x1024.bmp");
 
-	
-	int rottimer = GetTickCount();
-
 	// Main message loop:
 	while(true)
 	{
 		// Boop runs through its list of meshes and draws them all!
+		static int rottimer = GetTickCount();
 		if( GetTickCount() - rottimer > 10 ) {
 			rottimer = GetTickCount();
 			mat4 rotmtx = rotate(-1, vec3(0, 1, 0));
