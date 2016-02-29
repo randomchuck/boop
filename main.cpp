@@ -66,15 +66,24 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 //	boop.LoadMesh("stylus.obj", "roadtile_1024x1024.bmp");
 	// boop.LoadMesh("bman2.obj", "rainbow.bmp");
 	#define _ONE
+	// #define _TWO
+	// #define _THREE
 	#ifdef  _ONE
 		boop.LoadMesh("bman2_3015_Tris.obj", "rainbow.bmp");
 		boop.GetMesh(0)->matrix.columns[3].y += 1.0f;
-	#else
+		boop.GetMesh(0)->matrix.columns[3].z = 1.5f;
+	#endif
+	#ifdef _TWO
 		boop.LoadMesh("smalltri.obj", "rainbow.bmp");
 		boop.GetMesh(0)->matrix.columns[3].y += 1.8f;
-
+		boop.GetMesh(0)->matrix.columns[3].z = 1.5f;
 	#endif
-	boop.GetMesh(0)->matrix.columns[3].z = 1.5f;
+	#ifdef _THREE
+		boop.LoadMesh("box_v_uv_n.obj", "rainbow.bmp");
+		boop.GetMesh(0)->matrix.columns[3].y += 1.8f;
+		boop.GetMesh(0)->matrix.columns[3].z = 0.0f;
+	#endif
+	
 	
 	// boop.LoadMesh("bman.obj", "yellow.bmp");
 	//boop.LoadMesh("bman.obj", "roadtile_1024x1024.bmp");
@@ -95,11 +104,17 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	// boop.LoadMesh("box_v_uv_n.obj", "roadtile_1024x1024.bmp");
 
 	
+	int rottimer = GetTickCount();
 
 	// Main message loop:
 	while(true)
 	{
 		// Boop runs through its list of meshes and draws them all!
+		if( GetTickCount() - rottimer > 10 ) {
+			rottimer = GetTickCount();
+			mat4 rotmtx = rotate(-1, vec3(0, 1, 0));
+			boop.GetMesh(0)->matrix *= rotmtx;
+		}
 		boop.Render();
 
 		// Message?!
